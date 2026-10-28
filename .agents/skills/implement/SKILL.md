@@ -26,7 +26,7 @@ $ARGUMENTS
 <titles> ::= comma-separated rule titles
 ```
 
-Examples: `/implement business/users`; `/implement web/home:Empty list`; `/implement users`. A bare perspective (`/implement business`) targets its global rules.
+Examples: `/implement business/users`; `/implement user/home:Empty list`; `/implement users`. A bare perspective (`/implement business`, `/implement development`) targets its global rules.
 
 **No argument = stop.** Ask for a perspective, feature, or titles.
 
@@ -37,8 +37,8 @@ Examples: `/implement business/users`; `/implement web/home:Empty list`; `/imple
 1. **Reach** both `AGENTS.md` files.
 2. **Resolve the seed** against the feature directories of every perspective named in `perspectives/AGENTS.md`, or the global rules of a perspective's `AGENTS.md`. An existing tracking or spec path; otherwise a slug matched to the folder name. Ambiguous → list candidates and ask for an explicit path.
 3. **Close** the set: follow **direct** title mentions and links (P7), including the global rules the seed cites. Deduplicate. Apply `:<titles>` after closure. Report paths and the phase plan **before** executing.
-4. **Queue:** every `Removed:` in the closure, then the rules named by the argument (or every rule in the seed specs, if there is no title filter). Topological order by citations; functional before tech of the same owner; top → bottom in the file.
-5. **Phases** = `##` section of the rule owner, band of 6–10 items. Merge only with the next section **in the same file**. `Removed:` forms the first phases, by owner. One phase = one owner and one origin (functional **or** tech). Each phase runs twice: first as a **code phase** (code and paths, no tests), then, once every code phase of the run is done, as a **test phase** (tests and paths), in the same order.
+4. **Queue:** every `Removed:` in the closure, then the rules named by the argument (or every rule in the seed specs, if there is no title filter). Topological order by citations; policy before mechanism of the same owner; top → bottom in the file.
+5. **Phases** = `##` section of the rule owner, band of 6–10 items. Merge only with the next section **in the same file**. `Removed:` forms the first phases, by owner. One phase = one owner and one origin (policy **or** mechanism). Each phase runs twice: first as a **code phase** (code and paths, no tests), then, once every code phase of the run is done, as a **test phase** (tests and paths), in the same order.
 6. **Orchestrate** (below). Each item: Implementation gate. Update paths after each item. Mark `[x]` only after the test phases are green. If implementation or its tests are blocked or incomplete, leave `[ ]`. Spec files and `CONTEXT.md` stay untouched.
 7. **Report** by phase and item: done, blocked, files created, indirections (C7), spec gaps, and test results. No narrative on tracking.
 
