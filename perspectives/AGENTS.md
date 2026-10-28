@@ -2,13 +2,14 @@
 
 Perspectives hold the system specifications. They are the single source of truth.
 
-A perspective is documentation written from one interaction viewpoint of the system.
+A perspective is documentation written from the viewpoint of one actor of the system: the business, the user, the operator, the developer.
 
 What lives in which perspective is named here. Each nested `AGENTS.md` fills the slots this file points at for that viewpoint.
 
-- **Business** (`perspectives/business/`): product policy and the mechanism of each business feature. Product policy lives here, not on the web surface.
-- **Web** (`perspectives/web/`): rules of the web delivery mechanism only — what the user actually sees. Screen behavior lives here, not in business.
-- **Platform** (`perspectives/platform/`): how the system is built, shipped, and run — environments, deployment, and observability. Nothing the product does for its users lives here.
+- **Business** (`perspectives/business/`): product policy and the mechanism of each business feature. Product policy lives here, not on the user surface.
+- **User** (`perspectives/user/`): what the user sees and does — screens, flows, copy — and the mechanism of each user-facing feature. Screen behavior lives here, not in business.
+- **Operator** (`perspectives/operator/`): how the system is shipped and run — environments, deployment, and observability — and the mechanism of each operational feature. Nothing the product does for its users lives here.
+- **Development** (`perspectives/development/`): the mechanism that constrains how code is written, organized, built, and verified, regardless of which rule that code materializes — toolchain, runtime, test runner, code layering. It owns global rules only: no features, no policy layer.
 
 Apply the **Writing gate** before mutating a spec file or a tracking heading or flag under `perspectives/`. Path lists on tracking entries are defined in this file; the implementation postulates and the Implementation gate are in `src/AGENTS.md`. Reach `CONTEXT.md` when writing, changing, or reviewing any spec file under `perspectives/`. Update it in the same session a term is defined, renamed, or retired. Shape is under **Glossary**. Reach `TODO.md` when a needed spec is missing or a parked item may close. Shape is under **TODO**.
 
@@ -20,20 +21,22 @@ TODO.md                          # parked work this session cannot close
 CONTEXT.md                       # glossary: what domain terms are
 <perspective>/
   AGENTS.md                      # law of the perspective + its global rules
-  functional-tracking.md         # iff AGENTS.md owns a global functional rule
-  tech-tracking.md               # iff AGENTS.md owns a global tech rule
+  policy-tracking.md             # iff AGENTS.md owns a global policy rule
+  mechanism-tracking.md          # iff AGENTS.md owns a global mechanism rule
   <feature>/                     # ASCII kebab-case, no numeric prefix
-    functional-spec.md           # iff this feature has functional rules
-    tech-spec.md                 # iff this feature has tech rules
-    functional-tracking.md       # iff functional-spec.md has a rule
-    tech-tracking.md             # iff tech-spec.md has a rule
+    policy.md                    # iff this feature has policy rules
+    mechanism.md                 # iff this feature has mechanism rules
+    policy-tracking.md           # iff policy.md has a rule
+    mechanism-tracking.md        # iff mechanism.md has a rule
 ```
 
 A feature directory uses **only** those four names. There is no intermediate directory between the perspective and the feature. Omit a spec file that has no rules; omit its tracking file too. Do not leave empty files.
 
+`development/` is the exception: it holds `AGENTS.md` and `mechanism-tracking.md` only — no `<feature>/`, no `policy-tracking.md`.
+
 The root of this tree owns no rule. Every rule classifies into one perspective by that perspective's layer test, so the highest owner a rule can reach is a perspective's `AGENTS.md` — never this file. No tracking file sits beside it.
 
-**Spec file** is the skeleton of `functional-spec.md` and `tech-spec.md`. Reach it when creating or filling either.
+**Spec file** is the skeleton of `policy.md` and `mechanism.md`. Reach it when creating or filling either.
 
 `<feature>` names a feature of this perspective. The boundary criterion is defined in that perspective's `AGENTS.md`. Reach it when creating or justifying a new feature.
 
@@ -44,7 +47,7 @@ The `AGENTS.md` of a perspective carries three natures. They do not mix inside o
 | Nature | Heading | Tracking |
 |--------|---------|----------|
 | Law of the folder — feature boundary, layer test, vocabulary | as that file defines | none |
-| Global rule — one obligation that holds across every feature of the perspective | `## Global functional rules`, `## Global tech rules` | sibling `functional-tracking.md` or `tech-tracking.md`, at the perspective root |
+| Global rule — one obligation that holds across every feature of the perspective | `## Global policy rules`, `## Global mechanism rules` | sibling `policy-tracking.md` or `mechanism-tracking.md`, at the perspective root |
 | Pattern — the system uses a mechanism, and each feature **must** decide whether it adopts it | `## Adopted patterns` | none |
 
 A global rule is a rule: same **Rule format**, same **Title** rules, same normative body, tracked and implemented like any other. It lives here because its owner is the perspective, not one feature.
@@ -101,7 +104,7 @@ Work this tree still owes, parked because the current session cannot close it.
 
 ## Missing spec
 
-- [ ] **Invite expiry** (`business/invite`, functional) waits on **Member roles** (`business/access`).
+- [ ] **Invite expiry** (`business/invite`, policy) waits on **Member roles** (`business/access`).
 ```
 
 - One line per item: the work, the intended owner (perspective/feature, layer), and the blocker.
@@ -110,16 +113,16 @@ Work this tree still owes, parked because the current session cannot close it.
 
 ## Spec file
 
-`functional-spec.md` and `tech-spec.md` share this skeleton. What each file holds is in **Layers**. Titles, wording, and citation direction stay in **Rule format** and **Citation**.
+`policy.md` and `mechanism.md` share this skeleton. What each file holds is in **Layers**. Titles, wording, and citation direction stay in **Rule format** and **Citation**.
 
 1. `#` the feature name — not the kebab-case directory.
 2. One purpose sentence. File chrome: not a rule, not a tracking entry.
 3. Optional out-of-scope prose with a bold lead-in and no `##` heading. Also chrome.
 4. Then only `##` subjects and `###` rules.
 
-The file is self-contained: it carries the rules it owns and nothing copied. The tech title is prose; the package identifier lives in the body; a functional title in a tech body is a mention, not a restatement.
+The file is self-contained: it carries the rules it owns and nothing copied. The mechanism title is prose; the package identifier lives in the body; a policy title in a mechanism body is a mention, not a restatement.
 
-`functional-spec.md`:
+`policy.md`:
 
 ```markdown
 # Access
@@ -135,7 +138,7 @@ Three immutable roles and the account life cycle of this feature.
 The system **must** support exactly three roles: **Owner**, **Editor** and **Viewer**. No other role **must** exist.
 ```
 
-Same feature, `tech-spec.md`:
+Same feature, `mechanism.md`:
 
 ```markdown
 # Access
@@ -151,31 +154,32 @@ Every outbound call **must** use one `acme-http` client. Serves **Fixed catalog 
 
 ## Layers
 
-Each feature uses `functional-spec.md` and `tech-spec.md`. The same two layers split the global rules of a perspective. What each layer holds and does not hold is defined in that perspective's `AGENTS.md`. Reach it when classifying a rule, writing a spec file, or reviewing a heading against the wrong layer.
+Each feature uses `policy.md` and `mechanism.md`. The same two layers split the global rules of a perspective. What each layer holds and does not hold is defined in that perspective's `AGENTS.md`. Reach it when classifying a rule, writing a spec file, or reviewing a heading against the wrong layer.
 
 ## Citation
 
 Documentation is self-contained: a rule body is never copied into a second file, and no build step assembles it. A file states the rules it owns.
 
-**Cite by title.** Naming the human-readable title is the citation. Add a markdown link (`[Fixed catalog of three roles](../access/functional-spec.md#fixed-catalog-of-three-roles)`) when the reader has to reach the owner. The link complements the title; it never replaces the nucleus of the citing rule.
+**Cite by title.** Naming the human-readable title is the citation. Add a markdown link (`[Fixed catalog of three roles](../access/policy.md#fixed-catalog-of-three-roles)`) when the reader has to reach the owner. The link complements the title; it never replaces the nucleus of the citing rule.
 
-Functional spec never cites `tech-spec.md`. Tech spec cites a functional rule by title only to name **which** functional rule the tech rule serves — it does not restate, summarize, or paraphrase that rule.
+Policy never cites `mechanism.md`. Mechanism cites a policy rule by title only to name **which** policy rule the mechanism rule serves — it does not restate, summarize, or paraphrase that rule.
 
 ## Feature vs global
 
 A feature directory holds the rules that belong to **that** boundary alone.
 
-A rule whose body applies to the whole perspective, the repository as a whole, or more than one feature **belongs** to the `AGENTS.md` of the perspective. Its stated scope proves multiple real consumers; existing feature specs are not required as evidence. It becomes a global rule under **Perspective AGENTS.md**, and its tracking entry lives at the perspective root. Features cite it by title; they do not restate it. A global rule never depends on one feature's spec.
+A rule whose body applies to the whole perspective or to more than one of its features **belongs** to the `AGENTS.md` of the perspective. Its stated scope proves multiple real consumers; existing feature specs are not required as evidence. It becomes a global rule under **Perspective AGENTS.md**, and its tracking entry lives at the perspective root. Features cite it by title; they do not restate it. A global rule never depends on one feature's spec. A mechanism rule that constrains the form of the code regardless of which rule that code materializes belongs to `development/`; the boundary test is in its `AGENTS.md`.
 
 Otherwise, a rule needed by more than one feature **moves** at the **second real consumer** — not in anticipation of reuse.
 
 Resolve the owner in this order:
 
-1. Obligation applies to the whole perspective, the repository, or multiple feature boundaries → global rule.
-2. One feature boundary owns the obligation independently → feature rule.
-3. Every feature must decide independently whether to use a mechanism → adopted pattern.
+1. Obligation constrains the form of the code — how it is written, organized, built, or verified — regardless of which rule that code materializes → global mechanism rule of `development/`.
+2. Obligation applies to the whole perspective or multiple feature boundaries → global rule of that perspective.
+3. One feature boundary owns the obligation independently → feature rule.
+4. Every feature must decide independently whether to use a mechanism → adopted pattern.
 
-A technical subject area is not a feature boundary. Architecture, testing, persistence conventions, cross-cutting infrastructure, localization, and repository-wide tooling belong to global rules when they constrain multiple features. Do not create a feature directory only to group rules by technical concern.
+A technical subject area is not a feature boundary. Persistence conventions, cross-cutting infrastructure, and localization belong to the global rules of the perspective whose features they constrain. Code architecture, testing, and repository-wide tooling belong to `development/`. Do not create a feature directory only to group rules by technical concern.
 
 Copy vs coincidence: if the correct change to A requires the same change in B, it is copy → one owner in the perspective's `AGENTS.md`. If A and B may diverge without an inconsistent product, each stays in its feature.
 
@@ -214,9 +218,9 @@ A section is a coherent block of one subject — not a single orphan rule, and n
 
 Write and leave-out per layer are defined in that perspective's `AGENTS.md`. Reach it when drafting a rule body or a title.
 
-Tech titles stay prose (`Single HTTP client`). A tech rule that names a library **states the package** (or system tool) in the body (`acme-http`).
+Mechanism titles stay prose (`Single HTTP client`). A mechanism rule that names a library **states the package** (or system tool) in the body (`acme-http`).
 
-Tech states **one** decision with `must`, `must not`, `never`, `only`, `prohibited`. Facultative modals (`may`, `can be`, `ideally`, `prefer`) are not a rule.
+Mechanism states **one** decision with `must`, `must not`, `never`, `only`, `prohibited`. Facultative modals (`may`, `can be`, `ideally`, `prefer`) are not a rule.
 
 ### Anchors
 
@@ -238,10 +242,10 @@ Origin is the **file**, not a prefix. Tracking sits beside the owner. A global r
 
 | Tracking file | Rule owner |
 |---------------|------------|
-| `<feature>/functional-tracking.md` | sibling `functional-spec.md` |
-| `<feature>/tech-tracking.md` | sibling `tech-spec.md` |
-| `<perspective>/functional-tracking.md` | `## Global functional rules` of the sibling `AGENTS.md` |
-| `<perspective>/tech-tracking.md` | `## Global tech rules` of the sibling `AGENTS.md` |
+| `<feature>/policy-tracking.md` | sibling `policy.md` |
+| `<feature>/mechanism-tracking.md` | sibling `mechanism.md` |
+| `<perspective>/policy-tracking.md` | `## Global policy rules` of the sibling `AGENTS.md` |
+| `<perspective>/mechanism-tracking.md` | `## Global mechanism rules` of the sibling `AGENTS.md` |
 
 Two writers. Spec skills own the heading and change flags. The `/implement` skill owns the completion mark and path list.
 
@@ -299,14 +303,14 @@ Violation is a grave failure. Volume, age, or “already reviewed” does not ex
 
 **P6 Integrity and value.** The rule has sense, value to the user or the system, and no holes — contradictions, omitted exceptions, or undefined real paths. If a competent reader cannot say whether a given case matches the rule, the rule is vague. Ceremonial rules are not written.
 
-**P7 Minimum reading closure.** Closed by reading the owner file plus scopes it cites **directly**. A→B→C for the same obligation is depth 3. A large cohesive feature file is cheaper than split owners that must cite each other. The perspective's `AGENTS.md` is always in reading range, so a global rule adds no depth.
+**P7 Minimum reading closure.** Closed by reading the owner file plus scopes it cites **directly**. A→B→C for the same obligation is depth 3. A large cohesive feature file is cheaper than split owners that must cite each other. The perspective's `AGENTS.md` and `development/AGENTS.md` are always in reading range, so a global rule adds no depth.
 
 ## Writing gate
 
 **Done when:** every added, changed, renamed, moved, or removed rule has the matching tracking heading and flags from the table; path lists are untouched; every applicable postulate holds; the glossary matches the terms the session resolved; items this session unblocked are gone from `TODO.md`; new blockers are parked there.
 
-1. **Classify** the item into the functional or the tech layer using that perspective's `AGENTS.md`. Reach it before choosing a file.
-2. **Resolve the owner:** existing feature, a global rule in the perspective's `AGENTS.md` (second real consumer), or a new feature justified by the boundary criterion in that perspective's `AGENTS.md`.
+1. **Classify** the item into the policy or the mechanism layer using that perspective's `AGENTS.md`. Reach it before choosing a file.
+2. **Resolve the owner:** `development/` for a mechanism rule that passes its boundary test, an existing feature, a global rule in the perspective's `AGENTS.md` (second real consumer), or a new feature justified by the boundary criterion in that perspective's `AGENTS.md`.
 3. **Consult `CONTEXT.md` and `TODO.md`**, then draft against the postulates — checklist below. Fix violations before writing.
 4. **Write** the rule at its owner: a feature spec file to the **Spec file** skeleton, or a global rule under the slot in **Perspective AGENTS.md**. Spec language is English. Sync tracking **headings and flags** in the same session. If a term was defined, renamed, or retired, update `CONTEXT.md` in the same session. Park new blockers and delete unblocked items in `TODO.md` in the same session.
 5. **Stop.**
@@ -323,4 +327,4 @@ Violation is a grave failure. Volume, age, or “already reviewed” does not ex
 | Glossary | Does the spec use the canonical name? Does every new or shifted term have an entry? |
 | TODO | Did this session park what it cannot close? Did unblocked items leave the file? |
 
-Permissions in each perspective: create, edit, and delete the four names under `<feature>/`, and the global-rule and pattern slots of that perspective's `AGENTS.md`. The law of the folder in `AGENTS.md` — feature boundary, layer test, vocabulary — is not edited by a spec write. Sync tracking **headings and flags**. Path lists belong to implement. Edit `CONTEXT.md` (glossary only). Edit `TODO.md` (parked work only).
+Permissions in each perspective: create, edit, and delete the four names under `<feature>/`, and the global-rule and pattern slots of that perspective's `AGENTS.md`. `development/` has no `<feature>/`; its only writable slots are the global mechanism rules and patterns of its `AGENTS.md`. The law of the folder in `AGENTS.md` — feature boundary, layer test, vocabulary — is not edited by a spec write. Sync tracking **headings and flags**. Path lists belong to implement. Edit `CONTEXT.md` (glossary only). Edit `TODO.md` (parked work only).
