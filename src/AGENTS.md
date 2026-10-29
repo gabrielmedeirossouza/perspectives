@@ -49,7 +49,7 @@ On critical vs common, treat as critical. A suite that breaks on an internal ren
 3. **Sense:** diagnostics (as the root `AGENTS.md` defines them) before the first edit and after each executable edit. Distinguish pre-existing diagnostics from introduced ones. Fix introduced ones. If diagnostics are down, stop and report.
 4. **Test** once every rule in the run has code: band each rule (C2), write its public-surface suite, and run it green. If the test runner is down, stop and report.
 5. **Complete tracking:** process `Removed:` first when present; write paths on the existing tracking heading (C6), and mark `[x]` only when the rule is 100% implemented and its tests are green.
-6. **Stop.** Do not edit spec files, `CONTEXT.md`, or `TODO.md` during implementation. Do not create, rename, or delete a tracking heading except to delete an entry after `Removed:` is cleaned.
+6. **Stop.** Do not edit spec files or `CONTEXT.md` during implementation. In `TODO.md`, only park a spec gap under `## Spec gap`. Do not create, rename, or delete a tracking heading except to delete an entry after `Removed:` is cleaned.
 
 | | Ask |
 |--|------|
@@ -62,7 +62,7 @@ On critical vs common, treat as critical. A suite that breaks on an internal ren
 | C7 | Does every extra file or indirection have a declared trigger? |
 | C8 | Did I invent behavior or pick an open alternative? |
 
-Permissions for implementation: create, edit, and delete code and tests under `src/`. Write, update, and delete **paths** on tracking entries, and delete an entry after `Removed:` is cleaned. Spec skills own spec files and tracking headings; `CONTEXT.md` and `TODO.md` follow the Writing gate of `perspectives/AGENTS.md`.
+Permissions for implementation: create, edit, and delete code and tests under `src/`. Write, update, and delete **paths** on tracking entries, and delete an entry after `Removed:` is cleaned. Spec skills own spec files and tracking headings; `CONTEXT.md` and `TODO.md` follow the Writing gate of `perspectives/AGENTS.md`, except the `## Spec gap` items implementation parks.
 
 ## Bug autopsy
 

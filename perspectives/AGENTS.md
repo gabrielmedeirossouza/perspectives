@@ -91,6 +91,8 @@ _Avoid_: profile, permission group
 
 `TODO.md` is the stateful working set of work this tree still owes. Park what the current session cannot close — a needed feature or rule that does not exist, and this request does not create. Interview closes decisions the user can make now. Tracking `Dependency:` flags a rule already written. Write only the rules this session can close.
 
+`/implement` is the second writer, under `## Spec gap` only: it parks a written rule it cannot implement because the body is open — a hole, an ambiguity, an unnamed mechanism, an open alternative. The spec write that closes the gap deletes the item; until then `/implement continue` skips the rule.
+
 Read it at the start of a spec write, and again after writing a feature or rule that may unblock an item. Park in the same session as the block. Delete the item in the same session the parked work is done. A finished item leaves the file; this is remaining work, not a changelog.
 
 No tracking entry. Not a spec file. Chrome stays. The first parked item creates the first entry. Omit empty clusters.
@@ -105,9 +107,13 @@ Work this tree still owes, parked because the current session cannot close it.
 ## Missing spec
 
 - [ ] **Invite expiry** (`business/invite`, policy) waits on **Member roles** (`business/access`).
+
+## Spec gap
+
+- [ ] **Invite token storage** (`business/invite`, mechanism) names no persistence package.
 ```
 
-- One line per item: the work, the intended owner (perspective/feature, layer), and the blocker.
+- One line per item: the work, the intended owner (perspective/feature, layer), and the blocker. A spec gap names the rule title verbatim and its owner — `perspective/feature`, or `perspective` for a global rule.
 - English, matching spec language.
 - Group under `##` when clusters emerge; a flat list is fine for one subject.
 
@@ -236,7 +242,7 @@ Renaming a title updates every mention and `#anchor`, plus the tracking entry.
 
 ## Tracking
 
-Tracking is the link from each rule to its **materialization**. `[x]` means the rule is fully implemented: its code, tests, and applicable validation are complete. `[ ]` means the rule is not fully implemented. The `/implement` queue is the skill argument.
+Tracking is the link from each rule to its **materialization**. `[x]` means the rule is fully implemented: its code, tests, and applicable validation are complete. `[ ]` means the rule is not fully implemented. The `/implement` queue is the skill argument; under `continue` it is the next batch of `[ ]` entries.
 
 Origin is the **file**, not a prefix. Tracking sits beside the owner. A global rule's entry lives at the perspective root, beside its `AGENTS.md`; a feature that cites the rule does not duplicate the entry.
 
