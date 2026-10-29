@@ -7,6 +7,9 @@
 
 node_modules/
 
+# Sandboxes de protótipo — worktrees e manifestos ficam locais
+.sdd/prototypes/
+
 # OS / editor
 .DS_Store
 Thumbs.db
