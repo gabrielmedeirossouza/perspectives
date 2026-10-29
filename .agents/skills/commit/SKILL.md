@@ -70,7 +70,7 @@ A change that breaks a public contract — removed or renamed endpoint, field, e
 [BREAKING CHANGE: <what breaks and how to migrate>]
 ```
 
-- **Scope**: the area of the group — `<perspective>/<feature>` or `<perspective>` for specs, the module for code, `skills` for `.agents/skills/`, `brainstorming` for `.sdd/brainstorming/`. Omit it when the group spans unrelated areas.
+- **Scope**: the area of the group — `<perspective>/<feature>` or `<perspective>` for specs, the module for code, `skills` for `.agents/skills/`, `tools` for `.agents/tools/`, `brainstorming` for `.sdd/brainstorming/`. Omit it when the group spans unrelated areas.
 - **Description**: English, imperative, lowercase start, no final period, header ≤ 72 characters. Says what the change does, not which files moved.
 - **Body**: why the change was made and what it affects, wrapped at 72 columns. Omit it when the header is self-explanatory.
 
