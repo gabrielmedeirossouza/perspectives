@@ -9,3 +9,10 @@ Skills live once, in `.agents/skills/<name>/SKILL.md`. Claude Code reads only `.
 `/<name>` names a skill. Invoke it as `/<name>` in Cursor, Claude Code, and Antigravity, and as `$<name>` in Codex. `$ARGUMENTS` in a skill is the text typed with the invocation; where the harness leaves it literal, read it from the user's message.
 
 A skill that delegates uses the harness's subagent tool: `Task` in Cursor, `Agent` in Claude Code, subagents in Codex, `invoke_subagent` in Antigravity. Diagnostics mean the harness LSP; where the harness has none, the project's type checker and linter.
+
+## Working files
+
+`.sdd/` holds working files of the flow `/brainstorming` → `/prototype` → `/spec` → `/implement`, never rules. `perspectives/` stays the source of truth; a brainstorm never overrides a rule.
+
+- `.sdd/brainstorming/<name>.md`: versioned draft of an idea. `/brainstorming` writes it, `/prototype` reads it, `/spec` consumes and deletes it.
+- `.sdd/prototypes/`: git-ignored. One worktree and one manifest per prototype, owned by `/prototype`.
