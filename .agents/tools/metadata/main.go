@@ -1,16 +1,22 @@
-// metadata: does the .metadata.json of each node reflect its content? It also
+// metadata: does the metadata of each node reflect its content? It also
 // writes it, records which version of each source a node validated against,
 // and records the approvals of /sdd-audit on a code node.
 //
-// Usage: go run -C .agents/tools ./metadata [--write | --sync | --approve | --staged] [--root <dir>] [dir...]
+// Usage: go run -C .agents/tools ./metadata [--write | --sync | --approve | --staged] [--root <dir>] [node|dir...]
 //
-//	dir...        root-relative node directories (default: every node; --sync
-//	              and --approve require them)
+//	node|dir...   root-relative targets (default: every node; --sync and
+//	              --approve require them). A node is a file path
+//	              (specs/business/invite/spec.md, src/api/auth/db.ts) or the
+//	              path of its metadata file (db.ts.metadata.json,
+//	              src/api/.metadata.json); a directory names its directory
+//	              node, when it has one, and every node at or under it.
+//	              --sync and --approve take one node per target and refuse a
+//	              directory that names several
 //	(no flag)     check: list every drift of the targeted nodes; fail if any
 //	--write       recompute hash and rules; move modified only when the hash
 //	              changed; on a code node, return audited to 0 when the hash
-//	              changed; create the file for a directory of the specs root
-//	              that holds spec.md; never touch sources
+//	              changed; create spec.md.metadata.json for a spec.md of the
+//	              specs root; never touch sources or files
 //	--sync        --write, then record the current hash and rules of every
 //	              source, returning audited to 0 when a source is recorded for
 //	              the first time; refuses a dangling or invalid source, one
@@ -25,12 +31,14 @@
 //	--staged      --write on every node holding a staged file, then git add
 //	              the metadata of every such node; the pre-commit hook runs
 //	              this. It hashes the working tree, so a partially staged file
-//	              is hashed as it is on disk
+//	              is hashed as it is on disk. A renamed file whose metadata
+//	              did not move with it leaves an orphan, which is refused, as
+//	              is a staged file that belongs to no node
 //	--root <dir>  repository root, absolute (default: nearest directory at or
 //	              above the working directory with .sdd/.sdd-config.json)
 //
 // Output, plain text, one line per node: ok, written, synced, approved (with
-// the count), unchanged, or the drift found. Exit 0 when done; 1 when a check
+// the count), unchanged, staged, or the drift found. Exit 0 when done; 1 when a check
 // fails or a sync or approval is refused; 2 on a usage error (go run reports
 // every failure as 1).
 //
@@ -41,6 +49,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -50,7 +59,7 @@ import (
 	"tools/internal/repo"
 )
 
-const usage = "usage: go run -C .agents/tools ./metadata [--write | --sync | --approve | --staged] [--root <dir>] [dir...]"
+const usage = "usage: go run -C .agents/tools ./metadata [--write | --sync | --approve | --staged] [--root <dir>] [node|dir...]"
 
 type options struct {
 	write, sync, approve, staged bool
@@ -66,15 +75,19 @@ func main() {
 	check(err)
 
 	var targets []*graph.Node
+	var uncovered []string
 	switch {
 	case opts.staged:
-		targets, err = g.Staged()
+		targets, uncovered, err = g.Staged()
 	case len(opts.dirs) == 0:
 		targets = g.Nodes
 	default:
-		targets, err = resolve(g, root, opts.dirs)
+		targets, err = resolve(g, root, opts.dirs, opts.sync || opts.approve)
 	}
 	check(err)
+	for _, line := range uncovered {
+		fmt.Fprintf(os.Stderr, "metadata: %s\n", line)
+	}
 	targets = g.SourcesFirst(targets)
 	if len(targets) == 0 && !opts.staged {
 		fmt.Printf("no node under %s/ or %s/\n", g.Paths.Specs, g.Paths.Src)
@@ -82,10 +95,9 @@ func main() {
 	}
 
 	now := time.Now()
-	failed := false
+	failed := len(uncovered) > 0
 	var stage []string
 	for _, n := range targets {
-		file := n.Rel + "/" + meta.FileName
 		switch {
 		case opts.sync:
 			m, err := g.Sync(n, now)
@@ -96,7 +108,7 @@ func main() {
 			}
 			written, err := graph.Save(n, m)
 			check(err)
-			report(written, "synced", file)
+			report(written, "synced", n.MetaRel)
 		case opts.approve:
 			m, err := g.Approve(n, now)
 			if err != nil {
@@ -106,7 +118,7 @@ func main() {
 			}
 			_, err = graph.Save(n, m)
 			check(err)
-			fmt.Printf("approved %s (%d)\n", file, *m.Audited)
+			fmt.Printf("approved %s (%d)\n", n.MetaRel, *m.Audited)
 		case opts.write || opts.staged:
 			m, err := graph.Refresh(n, now)
 			if err != nil {
@@ -116,9 +128,11 @@ func main() {
 			}
 			written, err := graph.Save(n, m)
 			check(err)
-			report(written, "written", file)
 			if opts.staged {
-				stage = append(stage, file)
+				fmt.Println("staged " + n.MetaRel)
+				stage = append(stage, n.MetaRel)
+			} else {
+				report(written, "written", n.MetaRel)
 			}
 		default:
 			if d := g.NodeDrift(n); len(d) > 0 {
@@ -127,7 +141,7 @@ func main() {
 				}
 				failed = true
 			} else {
-				fmt.Println("ok " + file)
+				fmt.Println("ok " + n.MetaRel)
 			}
 		}
 	}
@@ -173,35 +187,63 @@ func parse(args []string) options {
 		fail("--write, --sync, --approve, and --staged exclude each other\n"+usage, 2)
 	}
 	if o.staged && len(o.dirs) > 0 {
-		fail("--staged takes no dir\n"+usage, 2)
+		fail("--staged takes no target\n"+usage, 2)
 	}
 	if o.sync && len(o.dirs) == 0 {
-		fail("--sync takes the node directories to sync; it never syncs every node\n"+usage, 2)
+		fail("--sync takes the nodes to sync; it never syncs every node\n"+usage, 2)
 	}
 	if o.approve && len(o.dirs) == 0 {
-		fail("--approve takes the code node directories a judge approved; it never approves every node\n"+usage, 2)
+		fail("--approve takes the code nodes a judge approved; it never approves every node\n"+usage, 2)
 	}
 	return o
 }
 
-// resolve maps root-relative (or absolute) directories to nodes, each once.
-func resolve(g *graph.Graph, root string, dirs []string) ([]*graph.Node, error) {
+// resolve maps root-relative (or absolute) targets to nodes, each once: a
+// node path or its metadata file names one node; a directory names its
+// directory node and every node at or under it — refused when single is
+// set and the directory names more than one.
+func resolve(g *graph.Graph, root string, targets []string, single bool) ([]*graph.Node, error) {
 	var out []*graph.Node
 	seen := map[*graph.Node]bool{}
-	for _, d := range dirs {
+	add := func(nodes ...*graph.Node) {
+		for _, n := range nodes {
+			if !seen[n] {
+				seen[n] = true
+				out = append(out, n)
+			}
+		}
+	}
+	for _, d := range targets {
 		rel := d
 		if filepath.IsAbs(d) {
 			rel = repo.Rel(root, d)
 		}
 		rel = repo.Clean(rel)
-		n := g.Node(rel)
-		if n == nil {
-			return nil, fmt.Errorf("`%s` is no node: a directory under %s/ holds %s; a directory under %s/ holds %s with its sources", rel, g.Paths.Specs, meta.SpecFile, g.Paths.Src, meta.FileName)
+		base := path.Base(rel)
+		var nodes []*graph.Node
+		switch {
+		case base == meta.FileName:
+			if n := g.Node(path.Dir(rel)); n != nil && n.IsDir {
+				nodes = []*graph.Node{n}
+			}
+		case strings.HasSuffix(base, meta.Suffix):
+			if n := g.Node(strings.TrimSuffix(rel, meta.Suffix)); n != nil && !n.IsDir {
+				nodes = []*graph.Node{n}
+			}
+		default:
+			if n := g.Node(rel); n != nil && !n.IsDir {
+				nodes = []*graph.Node{n}
+			} else {
+				nodes = g.NodesUnder(rel)
+			}
 		}
-		if !seen[n] {
-			seen[n] = true
-			out = append(out, n)
+		if len(nodes) == 0 {
+			return nil, fmt.Errorf("`%s` is no node: a node is a file with <file>%s beside it, or a directory under %s/ whose %s links its files; a directory names every node at or under it", rel, meta.Suffix, g.Paths.Src, meta.FileName)
 		}
+		if single && len(nodes) > 1 {
+			return nil, fmt.Errorf("`%s` names %d nodes; --sync and --approve take one node per target: a file path, or %s/%s for the directory node", rel, len(nodes), rel, meta.FileName)
+		}
+		add(nodes...)
 	}
 	return out, nil
 }

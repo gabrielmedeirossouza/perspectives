@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
+	"path"
 	"strings"
 	"time"
 
@@ -13,26 +13,39 @@ import (
 )
 
 // Refresh returns n's metadata with the current hash and rules; modified moves
-// only when the hash differs from the recorded one. Sources stay as recorded.
-// On a code node, audited keeps its count while the hash is the recorded one
-// and returns to 0 when the hash moved; other kinds carry no audited.
-// A spec-less perspective or technical node is refused: its metadata is to be
-// deleted or its spec.md written, not refreshed.
+// only when the hash differs from the recorded one. Sources and files stay as
+// recorded. On a code node, audited keeps its count while the hash is the
+// recorded one and returns to 0 when the hash moved; other kinds carry no
+// audited. An orphan metadata, a spec node that is not spec.md, a technical
+// spec without its skeleton, and a directory node with a bad link are
+// refused: they are fixed by hand, not refreshed.
 func Refresh(n *Node, now time.Time) (*meta.Metadata, error) {
-	if msg := specless(n); msg != "" {
+	if msg := malformed(n); msg != "" {
 		return nil, errors.New(msg)
 	}
+	if !n.HasMeta && n.Kind == Technical {
+		return nil, fmt.Errorf("`%s` has no %s; write its skeleton `{\"version\": %d, \"sources\": [...]}` (/sdd-design)", n.Rel, path.Base(n.MetaRel), meta.Version)
+	}
 	if n.MetaErr != nil {
-		return nil, fmt.Errorf("`%s/%s`: %v", n.Rel, meta.FileName, n.MetaErr)
+		return nil, fmt.Errorf("`%s`: %v", n.MetaRel, n.MetaErr)
 	}
 	if n.RuleErr != nil {
-		return nil, fmt.Errorf("`%s/%s`: %v", n.Rel, meta.SpecFile, n.RuleErr)
+		return nil, fmt.Errorf("`%s`: %v", n.Rel, n.RuleErr)
+	}
+	for _, f := range n.linkErrs {
+		if f.blocking {
+			return nil, errors.New(f.msg)
+		}
+	}
+	if n.Meta != nil && !n.IsDir && len(n.Meta.Files) > 0 {
+		return nil, fmt.Errorf("`%s` carries files, which only a directory node has; drop it", n.MetaRel)
 	}
 	m := &meta.Metadata{Version: meta.Version, Algorithm: meta.Algorithm, Hash: n.Hash, Rules: n.Rules}
 	if n.Meta != nil {
 		m.Modified = n.Meta.Modified
 		m.Sources = make([]meta.Source, len(n.Meta.Sources))
 		copy(m.Sources, n.Meta.Sources)
+		m.Files = copyFiles(n.Meta.Files)
 	}
 	if n.Meta == nil || n.Meta.Hash != n.Hash || m.Modified == "" {
 		m.Modified = meta.Stamp(now)
@@ -61,11 +74,11 @@ func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 	for i, e := range n.Sources {
 		switch {
 		case e.Dangling():
-			return nil, fmt.Errorf("`%s` lists `%s`, which is no node; drop it from sources", n.Rel, e.Source.Path)
+			return nil, fmt.Errorf("`%s` lists `%s`, which is no node%s; drop it from sources", n.Rel, e.Source.Path, g.hint(e.Source.Path))
 		case !e.Valid():
 			return nil, fmt.Errorf("`%s` (%s) lists `%s` (%s); %s", n.Rel, n.Kind, e.To.Rel, e.To.Kind, allowed(n.Kind))
 		case g.HasDrift(e.To):
-			return nil, fmt.Errorf("`%s` has drift; run metadata --write %s first", e.To.Rel, e.To.Rel)
+			return nil, fmt.Errorf("`%s` has drift; fix it first: %s", e.To.Rel, g.NodeDrift(e.To)[0])
 		}
 		if e.Source.Hash == "" && m.Audited != nil {
 			*m.Audited = 0
@@ -130,7 +143,7 @@ func (g *Graph) Approve(n *Node, now time.Time) (*meta.Metadata, error) {
 	return m, nil
 }
 
-// Save writes m to n's .metadata.json when its encoding differs from the file,
+// Save writes m to n's metadata file when its encoding differs from the file,
 // and makes n and its edges carry m so later operations in the same run see it.
 func Save(n *Node, m *meta.Metadata) (bool, error) {
 	b, err := meta.Encode(m)
@@ -146,11 +159,10 @@ func Save(n *Node, m *meta.Metadata) (bool, error) {
 			}
 		}
 	}
-	file := filepath.Join(n.Dir, meta.FileName)
-	if old, err := os.ReadFile(file); err == nil && bytes.Equal(old, b) {
+	if old, err := os.ReadFile(n.MetaPath); err == nil && bytes.Equal(old, b) {
 		return false, nil
 	}
-	return true, os.WriteFile(file, b, 0o644)
+	return true, os.WriteFile(n.MetaPath, b, 0o644)
 }
 
 func copyRules(r map[string]string) map[string]string {
@@ -160,6 +172,17 @@ func copyRules(r map[string]string) map[string]string {
 	out := make(map[string]string, len(r))
 	for k, v := range r {
 		out[k] = v
+	}
+	return out
+}
+
+func copyFiles(f map[string][]string) map[string][]string {
+	if f == nil {
+		return nil
+	}
+	out := make(map[string][]string, len(f))
+	for k, v := range f {
+		out[k] = append([]string{}, v...)
 	}
 	return out
 }

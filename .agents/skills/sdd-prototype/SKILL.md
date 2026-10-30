@@ -64,11 +64,11 @@ Examples: `/sdd-prototype`; `/sdd-prototype invite-expiry`; `/sdd-prototype --di
    - Stop when HEAD is detached, a merge, rebase, or cherry-pick is in progress, or `prototype/<name>` exists with no manifest (orphan — report it).
    - Warn when the working tree has uncommitted changes: they do not enter the prototype.
    - Write the manifest, then `git worktree add -b prototype/<name> .sdd/prototypes/<name> <base-sha>`.
-3. **Implement** the brainstorm inside the worktree only. Read the relevant specs and code so the prototype fits the existing stack and layout. Do not apply: `/sdd-spec`, `/sdd-design`, `.metadata.json`, tests, C1–C8, the Implementation gate, linters or type checks as gates, hooks. Make it run.
+3. **Implement** the brainstorm inside the worktree only. Read the relevant specs and code so the prototype fits the existing stack and layout. Do not apply: `/sdd-spec`, `/sdd-design`, `*.metadata.json`, tests, C1–C8, the Implementation gate, linters or type checks as gates, hooks. Make it run.
 4. **Commit** in the worktree: `git -C .sdd/prototypes/<name> add -A`, then `git -C .sdd/prototypes/<name> commit --no-verify -m "chore(prototype): <summary>"`. `--no-verify` is allowed on `prototype/*` only. Never push.
 5. **Report:** worktree, branch, how to run it, what was faked or simplified, findings that belong in the brainstorm (`/sdd-brainstorming <name>`), and `/sdd-prototype --discard <name>`.
 
-Never edit spec files under `specs/` or `src/specs/`, any `.metadata.json`, `CONTEXT.md`, `TODO.md`, the brainstorm, or any file outside the worktree except the manifest.
+Never edit spec files under `specs/` or `src/specs/`, any `*.metadata.json`, `CONTEXT.md`, `TODO.md`, the brainstorm, or any file outside the worktree except the manifest.
 
 ## Discard
 

@@ -4,23 +4,27 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"tools/internal/graph"
 )
 
-func TestResolveListsEachNodeOnce(t *testing.T) {
+func TestResolveNamesNodesMetadataFilesAndDirectories(t *testing.T) {
 	root := t.TempDir()
 	if out, err := exec.Command("git", "init", "-q", root).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v %s", err, out)
 	}
 	for rel, text := range map[string]string{
-		"AGENTS.md":             "# Root\n",
-		".sdd/.sdd-config.json": `{"version": 0, "paths": {"specs": "specs", "src": "src", "technical": "src/specs"}}` + "\n",
-		"specs/AGENTS.md":       "# P\n",
-		"src/x/a.go":            "package x\n",
-		"src/x/.metadata.json":  `{"version": 1}` + "\n",
-		"src/y/.metadata.json":  `{"version": 1}` + "\n",
+		"AGENTS.md":                "# Root\n",
+		".sdd/.sdd-config.json":    `{"version": 0, "paths": {"specs": "specs", "src": "src", "technical": "src/specs"}}` + "\n",
+		"specs/AGENTS.md":          "# P\n",
+		"src/x/a.go":               "package x\n",
+		"src/x/a.go.metadata.json": `{"version": 2}` + "\n",
+		"src/x/.metadata.json":     `{"version": 2}` + "\n",
+		"src/y/b.go":               "package y\n",
+		"src/y/b.go.metadata.json": `{"version": 2}` + "\n",
+		"specs/business/i/spec.md": "# I\n",
 	} {
 		p := filepath.Join(root, filepath.FromSlash(rel))
 		os.MkdirAll(filepath.Dir(p), 0o755)
@@ -30,11 +34,42 @@ func TestResolveListsEachNodeOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	nodes, err := resolve(g, root, []string{"src/x", "./src/x/", filepath.Join(root, "src", "x"), "src/y"})
-	if err != nil || len(nodes) != 2 || nodes[0].Rel != "src/x" || nodes[1].Rel != "src/y" {
-		t.Fatalf("resolve = %v %v", nodes, err)
+	rels := func(nodes []*graph.Node) string {
+		var out []string
+		for _, n := range nodes {
+			out = append(out, n.Rel)
+		}
+		return strings.Join(out, " ")
 	}
-	if _, err := resolve(g, root, []string{"src"}); err == nil {
-		t.Fatal("a directory that is no node resolved")
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"src/x", "./src/x/", filepath.Join(root, "src", "x"), "src/y/b.go"}, "src/x src/x/a.go src/y/b.go"},
+		{[]string{"src/x/.metadata.json"}, "src/x"},
+		{[]string{"src/x/a.go.metadata.json"}, "src/x/a.go"},
+		{[]string{"src/y"}, "src/y/b.go"},
+		{[]string{"src"}, "src/x src/x/a.go src/y/b.go"},
+		{[]string{"specs/business/i"}, "specs/business/i/spec.md"},
+		{[]string{"specs/business/i/spec.md"}, "specs/business/i/spec.md"},
+	} {
+		nodes, err := resolve(g, root, c.args, false)
+		if err != nil || rels(nodes) != c.want {
+			t.Errorf("resolve(%v) = %q %v, want %q", c.args, rels(nodes), err, c.want)
+		}
+	}
+	for _, bad := range []string{"src/z", "src/x/nope.go", "src/y/.metadata.json", "src/x/a.go/.metadata.json"} {
+		if _, err := resolve(g, root, []string{bad}, false); err == nil || !strings.Contains(err.Error(), "is no node") {
+			t.Errorf("resolve(%s) = %v, want an error", bad, err)
+		}
+	}
+	// --sync and --approve take one node per target.
+	for _, one := range []string{"src/x/.metadata.json", "src/x/a.go", "src/y", "specs/business/i"} {
+		if nodes, err := resolve(g, root, []string{one}, true); err != nil || len(nodes) != 1 {
+			t.Errorf("single resolve(%s) = %v %v", one, rels(nodes), err)
+		}
+	}
+	if _, err := resolve(g, root, []string{"src/x"}, true); err == nil || !strings.Contains(err.Error(), "`src/x` names 2 nodes; --sync and --approve take one node per target: a file path, or src/x/.metadata.json for the directory node") {
+		t.Errorf("single resolve(src/x) = %v", err)
 	}
 }

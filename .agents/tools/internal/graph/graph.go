@@ -1,9 +1,9 @@
 // Package graph loads every node under the specs root and the code root of
 // .sdd/.sdd-config.json, computes the current hash and rules of each, resolves
 // the sources they list, reads the gaps parked in TODO.md of the specs root,
-// and derives the states of **Metadata**
-// in the root AGENTS.md: drift, stale, dangling, unconsumed, fresh, waits — and
-// the audit standing of each code node (audit.go).
+// and derives the states of **Metadata** in the root AGENTS.md: drift, stale,
+// dangling, unconsumed, fresh, waits — and the audit standing of each code
+// node (audit.go).
 package graph
 
 import (
@@ -58,25 +58,55 @@ func allowed(k Kind) string {
 	return "a code node sources technical nodes and the perspective nodes they serve"
 }
 
-// Node is a directory with .metadata.json, or a directory under the specs root with spec.md.
+// Node is a file with <file>.metadata.json beside it — a spec.md under the
+// specs root is one even before the tool creates its metadata — or a
+// directory under the code root whose .metadata.json links the files of the
+// directory that are not code (a directory node).
 type Node struct {
-	Rel     string // root-relative directory, forward slashes
-	Dir     string // absolute directory
-	Kind    Kind
-	HasSpec bool
-	HasMeta bool
-	Meta    *meta.Metadata // nil when absent or unreadable
-	MetaErr error
-	Hash    string            // current node hash
-	Rules   map[string]string // current rule hashes; nil without spec.md
-	Order   []string          // rule titles in file order
-	RuleErr error
-	Sources []*Edge // one per Meta.Sources entry, in order
-	content []string
+	Rel      string // root-relative path: the file, or the directory of a directory node
+	Dir      string // absolute directory holding the node
+	MetaRel  string // root-relative metadata file
+	MetaPath string // absolute metadata file
+	Kind     Kind
+	IsDir    bool // a directory node
+	HasFile  bool // a file node whose file exists; false on orphan metadata
+	HasMeta  bool
+	Meta     *meta.Metadata // nil when absent or unreadable
+	MetaErr  error
+	Hash     string            // current node hash
+	Rules    map[string]string // current rule hashes; nil without a spec
+	Order    []string          // rule titles in file order
+	RuleErr  error
+	Sources  []*Edge // one per Meta.Sources entry, in order
+	content  []string
+	linkErrs []finding // what is wrong with files of a directory node
 }
 
-// Files lists the node's content, paths relative to the node, sorted.
+// Files lists the node's content, names relative to its directory, sorted:
+// the file itself, or the files a directory node links.
 func (n *Node) Files() []string { return append([]string(nil), n.content...) }
+
+// Label names the node inside its directory: the file name, or the
+// metadata file of a directory node.
+func (n *Node) Label() string {
+	if n.IsDir {
+		return meta.FileName
+	}
+	return path.Base(n.Rel)
+}
+
+// UnitDir is the directory the node belongs to for /sdd-implement units and
+// /sdd-audit judges: its own directory for a directory node.
+func (n *Node) UnitDir() string {
+	if n.IsDir {
+		return n.Rel
+	}
+	return path.Dir(n.Rel)
+}
+
+// spec reports whether the node is a spec node: a perspective or technical
+// node, which holds rules.
+func (n *Node) spec() bool { return n.Kind != Code }
 
 // Edge is one source a node lists.
 type Edge struct {
@@ -115,10 +145,12 @@ type Graph struct {
 	Paths     config.Paths // where product specs, technical specs, and code live
 	Nodes     []*Node      // sorted by Rel
 	byRel     map[string]*Node
-	topo      []*Node // technical nodes, sources first
+	files     map[string]bool // every file git tracks or would track under the roots
+	topo      []*Node         // technical nodes with metadata, sources first
 	pos       map[*Node]int
 	cycle     []string
-	uncovered map[string]int
+	strays    []string // metadata files that are no node, with the fix
+	uncovered []string // files in no node, with the fix
 	gaps      []Gap
 	gapDrift  []string
 }
@@ -135,8 +167,15 @@ func Load(root string) (*Graph, error) {
 	if err != nil {
 		return nil, err
 	}
-	g := &Graph{Root: root, Paths: cfg.Paths, byRel: map[string]*Node{}, pos: map[*Node]int{}, uncovered: map[string]int{}}
-	node := func(rel string) *Node {
+	g := &Graph{Root: root, Paths: cfg.Paths, byRel: map[string]*Node{}, files: map[string]bool{}, pos: map[*Node]int{}}
+	dirs := map[string]bool{}
+	for _, f := range files {
+		g.files[f] = true
+		for d := path.Dir(f); d != "." && d != "" && !dirs[d]; d = path.Dir(d) {
+			dirs[d] = true
+		}
+	}
+	node := func(rel string, dir bool) *Node {
 		if n := g.byRel[rel]; n != nil {
 			return n
 		}
@@ -144,60 +183,80 @@ func Load(root string) (*Graph, error) {
 		if !ok {
 			return nil
 		}
-		n := &Node{Rel: rel, Dir: filepath.Join(root, filepath.FromSlash(rel)), Kind: k}
+		n := &Node{Rel: rel, Kind: k, IsDir: dir, MetaRel: meta.MetaRel(rel, dir)}
+		if dir {
+			n.Dir = filepath.Join(root, filepath.FromSlash(rel))
+		} else {
+			n.Dir = filepath.Join(root, filepath.FromSlash(path.Dir(rel)))
+		}
+		n.MetaPath = filepath.Join(root, filepath.FromSlash(n.MetaRel))
 		g.byRel[rel] = n
 		g.Nodes = append(g.Nodes, n)
 		return n
 	}
 	for _, f := range files {
 		dir, base := path.Dir(f), path.Base(f)
-		if base == meta.FileName {
-			if n := node(dir); n != nil {
-				n.HasMeta = true
+		switch {
+		case base == meta.FileName:
+			if k, ok := g.kindOf(dir); ok && k == Code {
+				node(dir, true).HasMeta = true
+			} else {
+				g.strays = append(g.strays, fmt.Sprintf("`%s` is no node: the node of a spec is %s.%s", f, meta.SpecFile, strings.TrimPrefix(meta.Suffix, ".")))
 			}
-		} else if base == meta.SpecFile && config.Under(dir, g.Paths.Specs) {
-			if n := node(dir); n != nil {
-				n.HasSpec = true
+		case strings.HasSuffix(base, meta.Suffix):
+			rel := strings.TrimSuffix(f, meta.Suffix)
+			switch {
+			case strings.HasSuffix(rel, meta.Suffix):
+				g.strays = append(g.strays, fmt.Sprintf("`%s` is no node: a metadata file has no metadata; delete it", f))
+			case g.isChrome(rel):
+				g.strays = append(g.strays, fmt.Sprintf("`%s` is no node: `%s` is chrome; delete it", f, rel))
+			case dirs[rel]:
+				g.strays = append(g.strays, fmt.Sprintf("`%s` is no node: `%s` is a directory, whose metadata is `%s/%s`; delete it", f, rel, rel, meta.FileName))
+			default:
+				if n := node(rel, false); n != nil {
+					n.HasMeta = true
+				}
 			}
-		}
-	}
-	for _, f := range files {
-		if path.Base(f) == meta.SpecFile {
-			if n := g.byRel[path.Dir(f)]; n != nil {
-				n.HasSpec = true
-			}
+		case base == meta.SpecFile && !g.isChrome(f) && (config.Under(dir, g.Paths.Specs) || config.Under(dir, g.Paths.Technical)):
+			node(f, false)
 		}
 	}
 	sort.Slice(g.Nodes, func(i, j int) bool { return g.Nodes[i].Rel < g.Nodes[j].Rel })
+	for _, n := range g.Nodes {
+		if n.HasMeta {
+			n.Meta, n.MetaErr = meta.Read(n.MetaPath)
+		}
+	}
+	for _, n := range g.Nodes {
+		if n.IsDir {
+			g.loadLinks(n)
+		}
+	}
 	for _, f := range files {
-		if g.isChrome(f) {
+		base := path.Base(f)
+		if base == meta.FileName || strings.HasSuffix(base, meta.Suffix) || g.isChrome(f) {
 			continue
 		}
-		n := g.Owner(f)
-		if n == nil {
-			if config.Under(f, g.Paths.Src) {
-				g.uncovered[path.Dir(f)]++
-			}
+		if n := g.byRel[f]; n != nil {
+			n.HasFile = true
+			n.content = []string{base}
 			continue
 		}
-		if base := path.Base(f); base == meta.FileName || base == meta.LawFile {
-			continue
+		if d := g.byRel[path.Dir(f)]; d != nil && d.IsDir && d.links(base) {
+			continue // content of the directory node, taken from files
 		}
-		n.content = append(n.content, strings.TrimPrefix(f, n.Rel+"/"))
+		g.uncovered = append(g.uncovered, g.uncoveredFix(f))
 	}
 	for _, n := range g.Nodes {
 		if n.Hash, err = meta.HashFiles(n.Dir, n.content); err != nil {
 			return nil, err
 		}
-		if n.HasSpec {
+		if n.spec() && n.HasFile && path.Base(n.Rel) == meta.SpecFile {
 			text, err := os.ReadFile(filepath.Join(n.Dir, meta.SpecFile))
 			if err != nil {
 				return nil, err
 			}
 			n.Rules, n.Order, n.RuleErr = meta.RuleHashes(string(text))
-		}
-		if n.HasMeta {
-			n.Meta, n.MetaErr = meta.Read(n.Dir)
 		}
 	}
 	for _, n := range g.Nodes {
@@ -217,10 +276,81 @@ func Load(root string) (*Graph, error) {
 	return g, nil
 }
 
-// isChrome reports whether a file directly under the code root ending in .md
-// is repository chrome: no node's content, never drift.
+// loadLinks reads files of a directory node: each key is the name of a
+// tracked or trackable file directly in the directory that is neither chrome,
+// a metadata file, nor a node of its own; each value lists sources the node
+// lists. Valid keys become the node's content; the rest is drift.
+func (g *Graph) loadLinks(n *Node) {
+	if n.Meta == nil {
+		return
+	}
+	block := func(msg string) { n.linkErrs = append(n.linkErrs, finding{msg, true}) }
+	warn := func(msg string) { n.linkErrs = append(n.linkErrs, finding{msg, false}) }
+	if len(n.Meta.Files) == 0 {
+		warn(fmt.Sprintf("`%s` links no file; a directory node links at least one", n.MetaRel))
+		return
+	}
+	sources := map[string]bool{}
+	for _, s := range n.Meta.Sources {
+		sources[cleanRel(s.Path)] = true
+	}
+	keys := make([]string, 0, len(n.Meta.Files))
+	for k := range n.Meta.Files {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		f := n.Rel + "/" + k
+		switch {
+		case k == "" || k == "." || k == ".." || strings.Contains(k, "/") || strings.Contains(k, "\\"):
+			block(fmt.Sprintf("`%s` links `%s`, which is no file name; files names the files directly in the directory", n.MetaRel, k))
+			continue
+		case k == meta.FileName || strings.HasSuffix(k, meta.Suffix):
+			block(fmt.Sprintf("`%s` links `%s`, a metadata file", n.MetaRel, k))
+			continue
+		case g.isChrome(f):
+			block(fmt.Sprintf("`%s` links `%s`, which is chrome", n.MetaRel, k))
+			continue
+		case !g.files[f]:
+			block(fmt.Sprintf("`%s` links `%s`, which is no tracked or trackable file of the directory", n.MetaRel, k))
+			continue
+		case g.byRel[f] != nil:
+			block(fmt.Sprintf("`%s` links `%s`, which has its own metadata; drop it from files", n.MetaRel, k))
+			continue
+		}
+		n.content = append(n.content, k)
+		for _, p := range n.Meta.Files[k] {
+			if !sources[cleanRel(p)] {
+				block(fmt.Sprintf("`%s` links `%s` to `%s`, which it does not list as a source", n.MetaRel, k, p))
+			}
+		}
+	}
+}
+
+// links reports whether directory node n links a file of its directory by name.
+func (n *Node) links(name string) bool {
+	for _, c := range n.content {
+		if c == name {
+			return true
+		}
+	}
+	return false
+}
+
+// uncoveredFix names a file in no node and how to cover it.
+func (g *Graph) uncoveredFix(f string) string {
+	if config.Under(f, g.Paths.Specs) || config.Under(f, g.Paths.Technical) {
+		return fmt.Sprintf("`%s` is in no node: a spec directory holds %s and %s.%s", f, meta.SpecFile, meta.SpecFile, strings.TrimPrefix(meta.Suffix, "."))
+	}
+	return fmt.Sprintf("`%s` is in no node: give it %s%s, or link it in %s/%s", f, path.Base(f), meta.Suffix, path.Dir(f), meta.FileName)
+}
+
+// isChrome reports whether a file is repository chrome — no node's content,
+// never drift: AGENTS.md anywhere, the files directly under the specs root,
+// and the .md files directly under the code root.
 func (g *Graph) isChrome(f string) bool {
-	return path.Dir(f) == g.Paths.Src && strings.HasSuffix(f, ".md")
+	dir := path.Dir(f)
+	return path.Base(f) == meta.LawFile || dir == g.Paths.Specs || (dir == g.Paths.Src && strings.HasSuffix(f, ".md"))
 }
 
 // listFiles returns the root-relative regular files git tracks or would track
@@ -254,31 +384,45 @@ func listFiles(root string, p config.Paths) ([]string, error) {
 	return files, nil
 }
 
-// Staged returns the nodes holding a file staged for commit, sorted by path.
-// Renames are listed as a deletion and an addition, so both nodes refresh.
-func (g *Graph) Staged() ([]*Node, error) {
+// Staged returns the nodes holding a file staged for commit, sorted by path,
+// and the staged files that belong to no node: a file added under a root
+// without metadata, or a file whose metadata is staged for deletion. Renames
+// are listed as a deletion and an addition; the deleted file's node is an
+// orphan until its metadata moves with it.
+func (g *Graph) Staged() (nodes []*Node, uncovered []string, err error) {
 	cmd := exec.Command("git", "-C", g.Root, "diff", "--cached", "--name-only", "--no-renames", "-z", "--relative")
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("git diff --cached: %s", strings.TrimSpace(errb.String()))
+		return nil, nil, fmt.Errorf("git diff --cached: %s", strings.TrimSpace(errb.String()))
 	}
 	seen := map[*Node]bool{}
-	var nodes []*Node
 	for _, f := range strings.Split(out.String(), "\x00") {
 		if f == "" {
 			continue
 		}
-		if n := g.Owner(f); n != nil && !seen[n] {
-			seen[n] = true
-			nodes = append(nodes, n)
+		if n := g.Owner(f); n != nil {
+			if !seen[n] {
+				seen[n] = true
+				nodes = append(nodes, n)
+			}
+			continue
+		}
+		switch {
+		case g.files[f] && !g.isChrome(f) && !strings.HasSuffix(f, meta.Suffix):
+			if _, in := g.kindOf(f); in {
+				uncovered = append(uncovered, g.uncoveredFix(f))
+			}
+		case strings.HasSuffix(f, meta.Suffix) && path.Base(f) != meta.FileName && g.files[strings.TrimSuffix(f, meta.Suffix)]:
+			uncovered = append(uncovered, g.uncoveredFix(strings.TrimSuffix(f, meta.Suffix)))
 		}
 	}
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Rel < nodes[j].Rel })
-	return nodes, nil
+	sort.Strings(uncovered)
+	return nodes, uncovered, nil
 }
 
-// kindOf is the kind of a root-relative directory by its place in the layout.
+// kindOf is the kind of a root-relative path by its place in the layout.
 func (g *Graph) kindOf(rel string) (Kind, bool) {
 	switch {
 	case config.Under(rel, g.Paths.Specs):
@@ -295,12 +439,29 @@ func cleanRel(p string) string {
 	return strings.TrimPrefix(path.Clean(strings.ReplaceAll(p, "\\", "/")), "./")
 }
 
-// order sorts the technical nodes sources first (ties by path) and records
-// the members of a cycle, which come last.
+// hint names the spec file a source should have named, when the listed path
+// is the directory of a spec node.
+func (g *Graph) hint(p string) string {
+	if n := g.byRel[cleanRel(p)+"/"+meta.SpecFile]; n != nil {
+		return fmt.Sprintf(" (a source names a spec file: `%s`)", n.Rel)
+	}
+	return ""
+}
+
+// usable reports whether a technical node can be ordered and realized: it
+// has readable metadata, is a spec.md that exists, and its rules parse. The
+// rest is drift owed to whoever wrote it, never an /sdd-implement unit.
+func (n *Node) usable() bool {
+	return n.Kind == Technical && n.HasMeta && n.MetaErr == nil && n.RuleErr == nil && malformed(n) == ""
+}
+
+// order sorts the usable technical nodes sources first (ties by path) and
+// records the members of a cycle, which come last. A technical spec without
+// metadata is no one's source yet and joins once its skeleton exists.
 func (g *Graph) order() {
 	var ts []*Node
 	for _, n := range g.Nodes {
-		if n.Kind == Technical {
+		if n.usable() {
 			ts = append(ts, n)
 		}
 	}
@@ -308,7 +469,7 @@ func (g *Graph) order() {
 	next := map[*Node][]*Node{}
 	for _, n := range ts {
 		for _, e := range n.Sources {
-			if e.Valid() && e.To.Kind == Technical {
+			if e.Valid() && e.To.usable() {
 				indeg[n]++
 				next[e.To] = append(next[e.To], n)
 			}
@@ -341,15 +502,43 @@ func (g *Graph) order() {
 	}
 }
 
-// Node returns the node at a root-relative directory, or nil.
+// Node returns the node at a root-relative path, or nil.
 func (g *Graph) Node(rel string) *Node { return g.byRel[rel] }
 
-// Owner returns the deepest node whose directory holds the root-relative file f.
+// NodesUnder lists the nodes at or under a root-relative path, by path: the
+// directory node of that directory, when it has one, and every node below.
+func (g *Graph) NodesUnder(rel string) []*Node {
+	var out []*Node
+	for _, n := range g.Nodes {
+		if n.Rel == rel || strings.HasPrefix(n.Rel, rel+"/") {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// Owner returns the node a root-relative file belongs to: the file's own
+// node, the node a metadata file belongs to, or the directory node that
+// links the file; nil when none.
 func (g *Graph) Owner(f string) *Node {
-	for dir := path.Dir(f); dir != "." && dir != "/" && dir != ""; dir = path.Dir(dir) {
-		if n := g.byRel[dir]; n != nil {
+	dir, base := path.Dir(f), path.Base(f)
+	switch {
+	case base == meta.FileName:
+		if n := g.byRel[dir]; n != nil && n.IsDir {
 			return n
 		}
+		return nil
+	case strings.HasSuffix(base, meta.Suffix):
+		if n := g.byRel[strings.TrimSuffix(f, meta.Suffix)]; n != nil && !n.IsDir {
+			return n
+		}
+		return nil
+	}
+	if n := g.byRel[f]; n != nil && !n.IsDir {
+		return n
+	}
+	if d := g.byRel[dir]; d != nil && d.IsDir && d.links(base) {
+		return d
 	}
 	return nil
 }
@@ -414,11 +603,11 @@ type finding struct {
 	blocking bool
 }
 
-// NodeDrift lists what is wrong with n's own metadata: missing, unreadable,
-// not matching the content, a spec-less perspective or technical node, a
-// duplicate title, a source the node may not list, a code node that lists no
-// technical spec, or a perspective node the code node lists that none of its
-// technical specs serves.
+// NodeDrift lists what is wrong with n's own metadata: missing, orphan,
+// unreadable, not matching the content, a spec node that is not spec.md, a
+// duplicate title, a bad link of a directory node, a source the node may not
+// list, a code node that lists no technical spec, or a perspective node the
+// code node lists that none of its technical specs serves.
 func (g *Graph) NodeDrift(n *Node) []string {
 	var d []string
 	for _, f := range g.findings(n) {
@@ -431,25 +620,30 @@ func (g *Graph) findings(n *Node) []finding {
 	var d []finding
 	block := func(msg string) { d = append(d, finding{msg, true}) }
 	warn := func(msg string) { d = append(d, finding{msg, false}) }
-	file := n.Rel + "/" + meta.FileName
-	if msg := specless(n); msg != "" {
+	if msg := malformed(n); msg != "" {
 		block(msg)
 	}
 	if n.RuleErr != nil {
-		block(fmt.Sprintf("`%s/%s`: %v", n.Rel, meta.SpecFile, n.RuleErr))
+		block(fmt.Sprintf("`%s`: %v", n.Rel, n.RuleErr))
 	}
 	switch {
+	case !n.HasMeta && n.Kind == Technical:
+		block(fmt.Sprintf("`%s` has no %s; write its skeleton `{\"version\": %d, \"sources\": [...]}` (/sdd-design)", n.Rel, path.Base(n.MetaRel), meta.Version))
 	case !n.HasMeta:
-		block(fmt.Sprintf("`%s/%s` has no %s; run metadata --write %s", n.Rel, meta.SpecFile, meta.FileName, n.Rel))
+		block(fmt.Sprintf("`%s` has no %s; run metadata --write %s", n.Rel, path.Base(n.MetaRel), n.Rel))
 	case n.MetaErr != nil:
-		block(fmt.Sprintf("`%s`: %v", file, n.MetaErr))
+		block(fmt.Sprintf("`%s`: %v", n.MetaRel, n.MetaErr))
 	case n.Meta.Hash != n.Hash || !meta.SameRules(n.Meta.Rules, n.Rules):
-		block(fmt.Sprintf("`%s` does not match the content; run metadata --write %s", file, n.Rel))
+		block(fmt.Sprintf("`%s` does not match the content; run metadata --write %s", n.MetaRel, n.Rel))
 	case n.Kind == Code && n.Meta.Audited == nil:
-		block(fmt.Sprintf("`%s` carries no audited; run metadata --write %s", file, n.Rel))
+		block(fmt.Sprintf("`%s` carries no audited; run metadata --write %s", n.MetaRel, n.Rel))
 	case n.Kind != Code && n.Meta.Audited != nil:
-		block(fmt.Sprintf("`%s` carries audited, which only a code node has; run metadata --write %s", file, n.Rel))
+		block(fmt.Sprintf("`%s` carries audited, which only a code node has; run metadata --write %s", n.MetaRel, n.Rel))
 	}
+	if n.Meta != nil && !n.IsDir && len(n.Meta.Files) > 0 {
+		block(fmt.Sprintf("`%s` carries files, which only a directory node has", n.MetaRel))
+	}
+	d = append(d, n.linkErrs...)
 	for _, e := range n.Sources {
 		switch {
 		case e.To == nil:
@@ -501,13 +695,14 @@ func (g *Graph) noTechnical(n *Node) string {
 	return fmt.Sprintf("`%s` lists no technical spec; a code node lists at least one", n.Rel)
 }
 
-// specless names a perspective or technical node without spec.md.
-func specless(n *Node) string {
+// malformed names a node that cannot be what it claims: orphan metadata, or
+// a perspective or technical node that is not spec.md.
+func malformed(n *Node) string {
 	switch {
-	case n.Kind == Perspective && !n.HasSpec:
-		return fmt.Sprintf("`%s/%s` has no %s beside it; delete it", n.Rel, meta.FileName, meta.SpecFile)
-	case n.Kind == Technical && !n.HasSpec:
-		return fmt.Sprintf("`%s` has no %s; a technical node holds one", n.Rel, meta.SpecFile)
+	case !n.IsDir && !n.HasFile:
+		return fmt.Sprintf("`%s` has no %s beside it; delete it, or rename it with its file", n.MetaRel, path.Base(n.Rel))
+	case n.spec() && path.Base(n.Rel) != meta.SpecFile:
+		return fmt.Sprintf("`%s` is no %s; a %s node is %s; delete its metadata", n.Rel, meta.SpecFile, n.Kind, meta.SpecFile)
 	}
 	return ""
 }
@@ -515,22 +710,17 @@ func specless(n *Node) string {
 // HasDrift reports whether NodeDrift finds anything.
 func (g *Graph) HasDrift(n *Node) bool { return len(g.NodeDrift(n)) > 0 }
 
-// Drift lists every node's drift, then files under the code root outside any node,
-// technical specs that source each other in a cycle, and gaps in TODO.md
-// that match no rule or no code node owing an audit.
+// Drift lists every node's drift, then metadata files that are no node,
+// files under the specs root or the code root in no node, technical specs
+// that source each other in a cycle, and gaps in TODO.md that match no rule
+// or no code node owing an audit.
 func (g *Graph) Drift() []string {
 	var d []string
 	for _, n := range g.Nodes {
 		d = append(d, g.NodeDrift(n)...)
 	}
-	dirs := make([]string, 0, len(g.uncovered))
-	for dir := range g.uncovered {
-		dirs = append(dirs, dir)
-	}
-	sort.Strings(dirs)
-	for _, dir := range dirs {
-		d = append(d, fmt.Sprintf("`%s/` holds %d file(s) outside any node", dir, g.uncovered[dir]))
-	}
+	d = append(d, g.strays...)
+	d = append(d, g.uncovered...)
 	if len(g.cycle) > 0 {
 		d = append(d, "technical specs source each other in a cycle: `"+strings.Join(g.cycle, "`, `")+"`")
 	}
@@ -548,14 +738,14 @@ func (g *Graph) Design() []string {
 	for _, n := range g.Nodes {
 		switch n.Kind {
 		case Perspective:
-			if n.HasSpec && len(g.consumers(n, Technical)) == 0 {
+			if n.HasFile && len(g.consumers(n, Technical)) == 0 {
 				out = append(out, fmt.Sprintf("`%s` has no technical spec", n.Rel))
 			}
 		case Technical:
 			for _, e := range n.Sources {
 				switch {
 				case e.Dangling():
-					line := fmt.Sprintf("`%s` has a dangling source `%s`", n.Rel, e.Source.Path)
+					line := fmt.Sprintf("`%s` has a dangling source `%s`%s", n.Rel, e.Source.Path, g.hint(e.Source.Path))
 					if titles := e.recorded(); len(titles) > 0 {
 						line += ": removed " + quoted(titles)
 					}
@@ -583,14 +773,33 @@ type RuleState struct {
 	Parked string // the reason of the ## Design gap item that parks it, if any
 }
 
-// Unit is one item of the /sdd-implement backlog: a technical spec with no code
-// node, or a code node stale against a source, holding a dangling one, or
-// missing a perspective node its technical specs serve.
-type Unit struct {
+// NodeUnit is one pending code node inside a directory unit.
+type NodeUnit struct {
 	Node   *Node
+	Reason string
+	Wait   string // empty when the node can run
+	Rules  []RuleState
+}
+
+// Unit is one item of the /sdd-implement backlog: a technical spec with no code
+// node, or a directory with pending code nodes — stale against a source,
+// holding a dangling one, or missing a perspective node their technical specs
+// serve — with the union of their rules.
+type Unit struct {
+	Node   *Node      // the technical spec; nil for a directory unit
+	Dir    string     // the directory of the code nodes; empty for a technical spec
+	Nodes  []NodeUnit // the pending code nodes of Dir, by path
 	Reason string
 	Wait   string // empty when the unit can run; otherwise what /sdd-design owes first
 	Rules  []RuleState
+}
+
+// Rel names the unit: the technical spec, or the directory with a trailing slash.
+func (u Unit) Rel() string {
+	if u.Node != nil {
+		return u.Node.Rel
+	}
+	return u.Dir + "/"
 }
 
 // Units lists the /sdd-implement backlog, sources first: a unit sits after every
@@ -607,11 +816,13 @@ func (g *Graph) Units() []Unit {
 			all = append(all, keyed{g.pos[t], Technical, g.newUnit(t)})
 		}
 	}
+	dirs := map[string]*keyed{}
+	var order []string
 	for _, c := range g.Nodes {
 		if c.Kind != Code {
 			continue
 		}
-		u, ok := g.codeUnit(c)
+		nu, ok := g.codeUnit(c)
 		if !ok {
 			continue
 		}
@@ -621,7 +832,22 @@ func (g *Graph) Units() []Unit {
 				p = g.pos[e.To]
 			}
 		}
-		all = append(all, keyed{p, Code, u})
+		dir := c.UnitDir()
+		k := dirs[dir]
+		if k == nil {
+			k = &keyed{p, Code, Unit{Dir: dir}}
+			dirs[dir] = k
+			order = append(order, dir)
+		}
+		if p > k.pos {
+			k.pos = p
+		}
+		k.u.Nodes = append(k.u.Nodes, nu)
+	}
+	for _, dir := range order {
+		k := dirs[dir]
+		k.u.Reason, k.u.Wait, k.u.Rules = groupUnit(k.u.Nodes)
+		all = append(all, *k)
 	}
 	sort.SliceStable(all, func(i, j int) bool {
 		a, b := all[i], all[j]
@@ -631,13 +857,48 @@ func (g *Graph) Units() []Unit {
 		if a.kind != b.kind {
 			return a.kind < b.kind
 		}
-		return a.u.Node.Rel < b.u.Node.Rel
+		return a.u.Rel() < b.u.Rel()
 	})
 	units := make([]Unit, len(all))
 	for i, k := range all {
 		units[i] = g.park(k.u)
 	}
 	return units
+}
+
+// groupUnit folds the pending nodes of one directory: the reasons grouped by
+// the nodes that share them, the wait when every node waits, and the union
+// of their rules in the order of first appearance.
+func groupUnit(nodes []NodeUnit) (reason, wait string, rules []RuleState) {
+	var reasons []string
+	labels := map[string][]string{}
+	waits := 0
+	seen := map[[2]string]bool{}
+	for _, nu := range nodes {
+		if _, ok := labels[nu.Reason]; !ok {
+			reasons = append(reasons, nu.Reason)
+		}
+		labels[nu.Reason] = append(labels[nu.Reason], nu.Node.Label())
+		if nu.Wait != "" {
+			waits++
+		}
+		for _, r := range nu.Rules {
+			key := [2]string{r.Source, r.Title}
+			if !seen[key] {
+				seen[key] = true
+				rules = append(rules, r)
+			}
+		}
+	}
+	parts := make([]string, len(reasons))
+	for i, r := range reasons {
+		parts[i] = strings.Join(labels[r], ", ") + ": " + r
+	}
+	reason = strings.Join(parts, "; ")
+	if len(nodes) > 0 && waits == len(nodes) {
+		wait = nodes[0].Wait
+	}
+	return reason, wait, rules
 }
 
 // newUnit is a technical spec no code node realizes: every rule it and the
@@ -663,14 +924,14 @@ func (g *Graph) newUnit(t *Node) Unit {
 // perspective node its technical specs serve: removed and renamed rules
 // first, then new and changed ones in file order, perspective sources before
 // technical ones, then the rules of the missing perspective nodes.
-func (g *Graph) codeUnit(c *Node) (Unit, bool) {
-	u := Unit{Node: c}
+func (g *Graph) codeUnit(c *Node) (NodeUnit, bool) {
+	u := NodeUnit{Node: c}
 	var stale, dangling, missing []string
 	var first, rest []RuleState
 	for _, e := range sortedEdges(c.Sources) {
 		switch {
 		case e.Dangling():
-			dangling = append(dangling, "`"+e.Source.Path+"`")
+			dangling = append(dangling, "`"+e.Source.Path+"`"+g.hint(e.Source.Path))
 			for _, t := range e.recorded() {
 				first = append(first, RuleState{Title: t, State: "removed", Source: e.Source.Path})
 			}
@@ -746,7 +1007,7 @@ func (g *Graph) wait(t *Node, seen map[*Node]bool) string {
 	seen[t] = true
 	for _, e := range t.Sources {
 		if e.Dangling() {
-			return fmt.Sprintf("`%s` has a dangling source `%s` (/sdd-design)", t.Rel, e.Source.Path)
+			return fmt.Sprintf("`%s` has a dangling source `%s`%s (/sdd-design)", t.Rel, e.Source.Path, g.hint(e.Source.Path))
 		}
 		if e.Stale() {
 			return fmt.Sprintf("`%s` is stale against `%s` (/sdd-design)", t.Rel, e.To.Rel)

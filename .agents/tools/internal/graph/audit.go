@@ -68,11 +68,12 @@ func (g *Graph) Audits() []AuditState {
 	return out
 }
 
-// CodeNodesUnder lists the code nodes at or under a root-relative directory, by path.
+// CodeNodesUnder lists the code nodes at or under a root-relative path, by
+// path: a file node named exactly, or every code node under a directory.
 func (g *Graph) CodeNodesUnder(rel string) []*Node {
 	var out []*Node
-	for _, n := range g.Nodes {
-		if n.Kind == Code && (n.Rel == rel || strings.HasPrefix(n.Rel, rel+"/")) {
+	for _, n := range g.NodesUnder(rel) {
+		if n.Kind == Code {
 			out = append(out, n)
 		}
 	}
@@ -80,16 +81,16 @@ func (g *Graph) CodeNodesUnder(rel string) []*Node {
 }
 
 // Candidate is a technical node a code node does not list, with what makes
-// it worth the judge's read: its spec names the node's directory, or it is a
-// global spec, which every code node it constrains lists.
+// it worth the judge's read: its spec names the node's file or directory, or
+// it is a global spec, which every code node it constrains lists.
 type Candidate struct {
 	Node    *Node
-	Names   bool   // its spec.md names the node's directory or a parent of it below the code root
+	Names   bool   // its spec.md names the node's file, its directory, or a parent of it below the code root
 	Global  bool   // it serves no perspective node
 	Purpose string // the purpose sentence of its spec.md
 }
 
-// Tier orders candidates for the judge: 1 names the directory, 2 global, 3 the rest.
+// Tier orders candidates for the judge: 1 names the node, 2 global, 3 the rest.
 func (c Candidate) Tier() int {
 	switch {
 	case c.Names:
@@ -104,16 +105,20 @@ func (c Candidate) Tier() int {
 // node misses is an /sdd-implement unit, not judged, so only drops are listed.
 type Dossier struct {
 	State            AuditState
-	Files            []string
-	Technical        []*Node     // listed technical specs with a valid edge, by path
-	Perspectives     []*Node     // listed perspective specs with a valid edge, by path
-	Candidates       []Candidate // technical specs not listed, tier then path
-	DropPerspectives []string    // perspective nodes listed that no listed technical spec serves
+	Files            []string            // the content: the file, or the files a directory node links
+	Links            map[string][]string // directory node: each linked file with the sources it is linked to
+	Technical        []*Node             // listed technical specs with a valid edge, by path
+	Perspectives     []*Node             // listed perspective specs with a valid edge, by path
+	Candidates       []Candidate         // technical specs not listed, tier then path
+	DropPerspectives []string            // perspective nodes listed that no listed technical spec serves
 }
 
 // Dossier gathers what a judge needs about code node n.
 func (g *Graph) Dossier(n *Node) Dossier {
 	d := Dossier{State: g.AuditOf(n), Files: n.Files()}
+	if n.IsDir && n.Meta != nil {
+		d.Links = copyFiles(n.Meta.Files)
+	}
 	listed := map[*Node]bool{}
 	for _, e := range sortedEdges(n.Sources) {
 		if !e.Valid() {
@@ -129,7 +134,7 @@ func (g *Graph) Dossier(n *Node) Dossier {
 	}
 	names := namesRe(n.Rel, g.Paths.Src)
 	for _, t := range g.Nodes {
-		if t.Kind != Technical || listed[t] || !t.HasSpec {
+		if t.Kind != Technical || listed[t] || !t.HasFile {
 			continue
 		}
 		text, _ := os.ReadFile(filepath.Join(t.Dir, meta.SpecFile))
@@ -163,12 +168,13 @@ func (g *Graph) global(t *Node) bool {
 	return true
 }
 
-// namesRe matches a mention of the node's directory, or of a parent of it
-// below the code root src, as a whole path token — optionally led by ./ and
-// closed by a slash or a sentence period; a sibling (src/backend/invitee), a
-// file beside it (src/backend/invite.ts), or a child path does not count. For
-// the code root itself the token is the root, which most placement rules
-// mention.
+// namesRe matches a mention of the node's path — the file of a file node,
+// the directory of a directory node — or of a parent of it below the code
+// root src, as a whole path token — optionally led by ./ and closed by a
+// slash or a sentence period; a sibling (src/backend/invitee), a file with
+// a longer name (src/backend/invite.ts beside src/backend/invite), or a
+// child path does not count. For the code root itself the token is the root,
+// which most placement rules mention.
 func namesRe(rel, src string) *regexp.Regexp {
 	var dirs []string
 	for dir := rel; dir != "." && dir != ""; dir = path.Dir(dir) {

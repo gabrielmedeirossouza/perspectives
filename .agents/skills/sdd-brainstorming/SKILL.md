@@ -88,4 +88,4 @@ The file is written in the language of the conversation. Rule titles, `CONTEXT.m
 
 `Decisions` holds only what the user decided. A recommendation the user did not accept is not a decision; it stays an open question.
 
-Permissions: create, edit, and delete files under `.sdd/brainstorming/`. Out of scope: spec files under `specs/` and `src/specs/`, `.metadata.json`, `CONTEXT.md`, `TODO.md`, code under `src/`. Product specs are `/sdd-spec`, technical specs `/sdd-design`; code is `/sdd-implement` or `/sdd-prototype`.
+Permissions: create, edit, and delete files under `.sdd/brainstorming/`. Out of scope: spec files under `specs/` and `src/specs/`, `*.metadata.json`, `CONTEXT.md`, `TODO.md`, code under `src/`. Product specs are `/sdd-spec`, technical specs `/sdd-design`; code is `/sdd-implement` or `/sdd-prototype`.
