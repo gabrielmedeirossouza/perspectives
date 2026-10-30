@@ -14,6 +14,7 @@ A skill that delegates uses the harness's subagent tool: `Task` in Cursor, `Agen
 
 `.sdd/` holds working files of the flow `/brainstorming` → `/prototype` → `/spec` → `/design` → `/implement`, never rules. `perspectives/` and `src/specs/` stay the source of truth; a brainstorm never overrides a rule.
 
+- `.sdd/.sdd-config.json`: the framework version this repository is on, the remote it came from, and the layout the tools read: `paths.specs` (product specs, `perspectives/`), `paths.src` (code, `src/`), `paths.technical` (technical specs, `src/specs/`). The file marks the repository root for every tool; a path left out takes the default in parentheses.
 - `.sdd/brainstorming/<name>.md`: versioned draft of an idea. `/brainstorming` writes it, `/prototype` reads it, `/spec` consumes and deletes it.
 - `.sdd/prototypes/`: git-ignored. One worktree and one manifest per prototype, owned by `/prototype`.
 
@@ -33,7 +34,7 @@ Scripts and tooling of this repository are written in Go, standard library only;
 
 Sync between a spec and what consumes it is not written by hand. Every consumer records the version of each source it last validated against; a tool computes what is stale. Nothing records what consumes it.
 
-**Node** = a directory with `.metadata.json`. Under `perspectives/`, every directory holding `spec.md` is a node, and the tool creates its file. Under `src/`, a node is declared by the skill that writes its `.metadata.json`. Kinds, by place: **perspective** under `perspectives/`, **technical** under `src/specs/`, **code** elsewhere under `src/`. `src/` itself may be a code node: the one that holds the root manifests and configuration a global technical spec decides (`go.mod`, `package.json`, lockfiles, compiler settings).
+**Node** = a directory with `.metadata.json`. Under `perspectives/`, every directory holding `spec.md` is a node, and the tool creates its file. Under `src/`, a node is declared by the skill that writes its `.metadata.json`. Kinds, by place in the layout of `.sdd/.sdd-config.json`: **perspective** under the specs root (`perspectives/`), **technical** under the technical root (`src/specs/`), **code** elsewhere under the code root (`src/`). `src/` itself may be a code node: the one that holds the root manifests and configuration a global technical spec decides (`go.mod`, `package.json`, lockfiles, compiler settings).
 
 **Content** = every regular file git tracks or would track (not ignored) under the node's directory, recursively, except `.metadata.json`, `AGENTS.md`, the files directly under `src/` ending in `.md` (chrome), and the subtrees of other nodes. **Hash** = sha256 of the sorted entries `<path relative to the node>\0<sha256 of the bytes>\n`. Raw bytes, no normalization. **Rules**, when the node holds `spec.md`: each `###` title outside code fences → sha256 of its body, the lines up to the next heading of level 1–3 with blank lines at both ends removed. The title stays outside its hash, so a rename is told from a change.
 
