@@ -3,24 +3,29 @@ package graph
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"tools/internal/config"
 	"tools/internal/md"
+	"tools/internal/meta"
 )
 
 // Gap is one item parked in TODO.md of the specs root under ## Spec gap (a product
 // rule /sdd-design cannot design against), ## Design gap (a rule /sdd-implement
-// cannot implement), or ## Audit gap (a code node no technical spec governs).
+// cannot implement), or ## Audit gap (code no technical spec governs).
 // Shape: `- **<title>** (`<owner>`) <reason>`, with an optional leading `[ ]`
-// tolerated. An audit gap's title names what the missing spec would decide
-// and its owner is the code node.
+// tolerated. A spec or design gap's owner is a spec directory or its spec.md;
+// an audit gap's title names what the missing spec would decide and its owner
+// is a code node (a file, or <dir>/.metadata.json for a directory node), a
+// linked file — which parks the directory node that links it — or a
+// directory, which parks every code node at or under it.
 type Gap struct {
 	Heading string // "spec", "design", or "audit"
 	Title   string
-	Node    string // root-relative node directory the owner names
+	Owner   string // root-relative path the owner names
 	Reason  string
 	matched bool
 }
@@ -67,17 +72,61 @@ func loadGaps(root string, p config.Paths) ([]Gap, []string) {
 			if reason == "" {
 				reason = heading + " gap"
 			}
-			gaps = append(gaps, Gap{Heading: heading, Title: m[1], Node: owner, Reason: reason})
+			gaps = append(gaps, Gap{Heading: heading, Title: m[1], Owner: owner, Reason: reason})
 		}
 	}
 	return gaps, drift
 }
 
+// covers reports whether the gap's owner names node rel: the spec node
+// itself or its directory for a spec or design gap; for an audit gap, one of
+// the code nodes the owner parks.
+func (g *Graph) covers(gap *Gap, rel string) bool {
+	if gap.Heading == "audit" {
+		for _, n := range g.auditNodes(gap.Owner) {
+			if n.Rel == rel {
+				return true
+			}
+		}
+		return false
+	}
+	return gap.Owner == rel || gap.Owner+"/"+meta.SpecFile == rel
+}
+
+// auditNodes lists the code nodes an audit gap's owner parks: the node a
+// file path or a metadata file names, the directory node that links a file,
+// or every code node at or under a directory.
+func (g *Graph) auditNodes(owner string) []*Node {
+	dir, base := path.Dir(owner), path.Base(owner)
+	switch {
+	case base == meta.FileName:
+		if n := g.byRel[dir]; n != nil && n.IsDir {
+			return []*Node{n}
+		}
+		return nil
+	case strings.HasSuffix(base, meta.Suffix):
+		if n := g.byRel[strings.TrimSuffix(owner, meta.Suffix)]; n != nil && n.Kind == Code {
+			return []*Node{n}
+		}
+		return nil
+	}
+	if n := g.byRel[owner]; n != nil && !n.IsDir {
+		if n.Kind == Code {
+			return []*Node{n}
+		}
+		return nil
+	}
+	if d := g.byRel[dir]; d != nil && d.IsDir && d.links(base) {
+		return []*Node{d}
+	}
+	return g.CodeNodesUnder(owner)
+}
+
 // gapsFor returns the gaps of one heading parked on one node.
-func (g *Graph) gapsFor(heading, node string) []*Gap {
+func (g *Graph) gapsFor(heading, rel string) []*Gap {
 	var out []*Gap
 	for i := range g.gaps {
-		if g.gaps[i].Heading == heading && g.gaps[i].Node == node {
+		if g.gaps[i].Heading == heading && g.covers(&g.gaps[i], rel) {
 			out = append(out, &g.gaps[i])
 		}
 	}
@@ -104,6 +153,15 @@ func (g *Graph) park(u Unit) Unit {
 	return u
 }
 
+// specNode returns the spec node an owner names: the node itself or the
+// spec.md of the directory.
+func (g *Graph) specNode(owner string) *Node {
+	if n := g.byRel[owner]; n != nil && n.spec() {
+		return n
+	}
+	return g.byRel[owner+"/"+meta.SpecFile]
+}
+
 // unmatchedGaps lists the gaps that park nothing: a design gap matching no
 // pending rule, a spec gap matching no rule of the node it names, an audit
 // gap naming no code node that owes an audit.
@@ -115,17 +173,23 @@ func (g *Graph) unmatchedGaps() []string {
 		switch gap.Heading {
 		case "design":
 			if !gap.matched {
-				d = append(d, fmt.Sprintf(todo+": design gap %q (`%s`) matches no pending rule", gap.Title, gap.Node))
+				d = append(d, fmt.Sprintf(todo+": design gap %q (`%s`) matches no pending rule", gap.Title, gap.Owner))
 			}
 		case "spec":
-			n := g.byRel[gap.Node]
+			n := g.specNode(gap.Owner)
 			if n == nil || n.Rules[gap.Title] == "" {
-				d = append(d, fmt.Sprintf(todo+": spec gap %q (`%s`) matches no rule", gap.Title, gap.Node))
+				d = append(d, fmt.Sprintf(todo+": spec gap %q (`%s`) matches no rule", gap.Title, gap.Owner))
 			}
 		case "audit":
-			n := g.byRel[gap.Node]
-			if n == nil || n.Kind != Code || auditedOf(n) > 0 {
-				d = append(d, fmt.Sprintf(todo+": audit gap %q (`%s`) names no code node that owes an audit", gap.Title, gap.Node))
+			owed := false
+			for _, n := range g.auditNodes(gap.Owner) {
+				if auditedOf(n) == 0 {
+					owed = true
+					break
+				}
+			}
+			if !owed {
+				d = append(d, fmt.Sprintf(todo+": audit gap %q (`%s`) names no code node that owes an audit", gap.Title, gap.Owner))
 			}
 		}
 	}

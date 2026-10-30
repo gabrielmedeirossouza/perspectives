@@ -10,7 +10,7 @@ import (
 )
 
 func TestEncodeIsByteStableAndUnescaped(t *testing.T) {
-	m := &Metadata{Version: 1, Algorithm: "sha256", Hash: "h", Modified: "2026-01-01T00:00:00Z",
+	m := &Metadata{Version: 2, Algorithm: "sha256", Hash: "h", Modified: "2026-01-01T00:00:00Z",
 		Rules:   map[string]string{"Z & <last>": "1", "A first": "2"},
 		Sources: []Source{{Path: "specs/x", Hash: "s", Rules: map[string]string{"b": "1", "a": "2"}}}}
 	a, err := Encode(m)
@@ -34,7 +34,7 @@ func TestEncodeIsByteStableAndUnescaped(t *testing.T) {
 }
 
 func TestEncodeOmitsEmptyRulesAndSources(t *testing.T) {
-	a, _ := Encode(&Metadata{Version: 1, Algorithm: "sha256", Hash: "h", Modified: "m"})
+	a, _ := Encode(&Metadata{Version: 2, Algorithm: "sha256", Hash: "h", Modified: "m"})
 	if strings.Contains(string(a), "rules") || strings.Contains(string(a), "sources") {
 		t.Fatalf("encoding = %s", a)
 	}
@@ -96,35 +96,61 @@ func TestHashFilesDefinition(t *testing.T) {
 }
 
 func TestReadRefusesUnknownFieldsAndVersions(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, FileName), []byte(`{"version": 1, "source": []}`), 0o644)
-	if _, err := Read(dir); err == nil || !strings.Contains(err.Error(), "source") {
+	file := filepath.Join(t.TempDir(), "spec.md"+Suffix)
+	os.WriteFile(file, []byte(`{"version": 2, "source": []}`), 0o644)
+	if _, err := Read(file); err == nil || !strings.Contains(err.Error(), "source") {
 		t.Fatalf("unknown field accepted: %v", err)
 	}
-	os.WriteFile(filepath.Join(dir, FileName), []byte(`{"version": 2}`), 0o644)
-	if _, err := Read(dir); err == nil || !strings.Contains(err.Error(), "version 2") {
-		t.Fatalf("version 2 accepted: %v", err)
+	for _, v := range []string{"1", "3"} {
+		os.WriteFile(file, []byte(`{"version": `+v+`}`), 0o644)
+		if _, err := Read(file); err == nil || !strings.Contains(err.Error(), "version "+v+" is not supported; this tool writes version 2") {
+			t.Fatalf("version %s accepted: %v", v, err)
+		}
 	}
-	os.WriteFile(filepath.Join(dir, FileName), []byte(`{"sources": [{"path": "x"}]}`), 0o644)
-	if m, err := Read(dir); err != nil || len(m.Sources) != 1 {
+	os.WriteFile(file, []byte(`{"sources": [{"path": "x"}], "files": {"a": []}}`), 0o644)
+	if m, err := Read(file); err != nil || len(m.Sources) != 1 || m.Files["a"] == nil || len(m.Files["a"]) != 0 {
 		t.Fatalf("skeleton refused: %v %+v", err, m)
+	}
+}
+
+func TestMetaRel(t *testing.T) {
+	if MetaRel("src/api/auth/db.ts", false) != "src/api/auth/db.ts.metadata.json" || MetaRel("src/api", true) != "src/api/.metadata.json" {
+		t.Fatalf("MetaRel = %s %s", MetaRel("src/api/auth/db.ts", false), MetaRel("src/api", true))
+	}
+}
+
+func TestEncodeKeepsFilesAfterSourcesAsLists(t *testing.T) {
+	zero := 0
+	m := &Metadata{Version: 2, Algorithm: "sha256", Hash: "h", Modified: "m", Audited: &zero,
+		Sources: []Source{{Path: "src/specs/toolchain/spec.md"}},
+		Files:   map[string][]string{"free.txt": nil, "go.mod": {"src/specs/toolchain/spec.md"}}}
+	b, err := Encode(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	if strings.Index(s, `"sources"`) > strings.Index(s, `"files"`) || !strings.Contains(s, `"free.txt": []`) || strings.Contains(s, "null") {
+		t.Fatalf("encoding = %s", s)
+	}
+	if m.Files["free.txt"] != nil {
+		t.Fatal("Encode changed the metadata it rendered")
 	}
 }
 
 func TestEncodeKeepsAuditedZeroBetweenModifiedAndRules(t *testing.T) {
 	zero := 0
-	a, _ := Encode(&Metadata{Version: 1, Algorithm: "sha256", Hash: "h", Modified: "m", Audited: &zero, Rules: map[string]string{"r": "1"}})
+	a, _ := Encode(&Metadata{Version: 2, Algorithm: "sha256", Hash: "h", Modified: "m", Audited: &zero, Rules: map[string]string{"r": "1"}})
 	s := string(a)
 	if !strings.Contains(s, `"audited": 0`) || strings.Index(s, `"modified"`) > strings.Index(s, `"audited"`) || strings.Index(s, `"audited"`) > strings.Index(s, `"rules"`) {
 		t.Fatalf("encoding = %s", s)
 	}
-	b, _ := Encode(&Metadata{Version: 1, Algorithm: "sha256", Hash: "h", Modified: "m"})
+	b, _ := Encode(&Metadata{Version: 2, Algorithm: "sha256", Hash: "h", Modified: "m"})
 	if strings.Contains(string(b), "audited") {
 		t.Fatalf("audited rendered on a node without it: %s", b)
 	}
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, FileName), []byte(`{"version": 1, "hash": "h", "audited": 2}`), 0o644)
-	if m, err := Read(dir); err != nil || m.Audited == nil || *m.Audited != 2 {
+	file := filepath.Join(t.TempDir(), FileName)
+	os.WriteFile(file, []byte(`{"version": 2, "hash": "h", "audited": 2}`), 0o644)
+	if m, err := Read(file); err != nil || m.Audited == nil || *m.Audited != 2 {
 		t.Fatalf("audited not read: %v %+v", err, m)
 	}
 }

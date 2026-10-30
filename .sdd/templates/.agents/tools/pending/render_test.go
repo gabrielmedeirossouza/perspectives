@@ -11,6 +11,13 @@ import (
 	"tools/internal/graph"
 )
 
+const (
+	P = "specs/business/invite/spec.md"
+	T = "src/specs/toolchain/spec.md"
+	I = "src/specs/invite/spec.md"
+	C = "src/backend/invite/invite.ts"
+)
+
 func write(t *testing.T, root, rel, text string) {
 	t.Helper()
 	p := filepath.Join(root, filepath.FromSlash(rel))
@@ -77,10 +84,10 @@ func approve(t *testing.T, root, rel string) {
 
 func TestBatchModeNamesDesignWorkWhenNothingCanBeImplemented(t *testing.T) {
 	root := gitInit(t)
-	write(t, root, "specs/business/invite/spec.md", "# Invite\n\n## S\n\n### R\n\nx\n")
+	write(t, root, P, "# Invite\n\n## S\n\n### R\n\nx\n")
 	g := load(t, root)
 	out := render(g, true)
-	for _, want := range []string{"# Next batch: none", "Nothing to implement; /sdd-design owes:", "- `specs/business/invite` has no technical spec", "# Drift"} {
+	for _, want := range []string{"# Next batch: none", "Nothing to implement; /sdd-design owes:", "- `" + P + "` has no technical spec", "# Drift"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("batch output lacks %q:\n%s", want, out)
 		}
@@ -93,29 +100,40 @@ func TestBatchModeNamesDesignWorkWhenNothingCanBeImplemented(t *testing.T) {
 const pSpec = "# Invite\n\nPurpose.\n\n## S\n\n### Invite expiry\n\nx\n"
 
 // auditFixture: one approved code node (src, the root manifests) and one that
-// owes an audit (src/backend/invite), with a global spec it does not list.
+// owes an audit (src/backend/invite/invite.ts), with a global spec it does not list.
 func auditFixture(t *testing.T) string {
 	t.Helper()
 	root := gitInit(t)
-	write(t, root, "specs/business/invite/spec.md", pSpec)
-	write(t, root, "src/specs/toolchain/spec.md", "# Toolchain\n\nThe toolchain of every module.\n\n## Place\n\n### Backend placement\n\nModules live under `src/backend/`.\n")
-	write(t, root, "src/specs/toolchain/.metadata.json", `{"version": 1}`+"\n")
-	write(t, root, "src/specs/invite/spec.md", "# Invite\n\nHow invites are built.\n\n## HTTP\n\n### Invite endpoint\n\nx\n")
-	write(t, root, "src/specs/invite/.metadata.json", `{"version": 1, "sources": [{"path": "specs/business/invite"}]}`+"\n")
-	write(t, root, "src/backend/invite/invite.ts", "x\n")
-	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "specs/business/invite"}]}`+"\n")
+	write(t, root, P, pSpec)
+	write(t, root, T, "# Toolchain\n\nThe toolchain of every module.\n\n## Place\n\n### Backend placement\n\nModules live under `src/backend/`.\n")
+	write(t, root, T+".metadata.json", `{"version": 2}`+"\n")
+	write(t, root, I, "# Invite\n\nHow invites are built.\n\n## HTTP\n\n### Invite endpoint\n\nx\n")
+	write(t, root, I+".metadata.json", `{"version": 2, "sources": [{"path": "`+P+`"}]}`+"\n")
+	write(t, root, C, "x\n")
+	write(t, root, C+".metadata.json", `{"version": 2, "sources": [{"path": "`+I+`"}, {"path": "`+P+`"}]}`+"\n")
 	write(t, root, "src/go.mod", "module x\n")
-	write(t, root, "src/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/toolchain"}]}`+"\n")
-	sync(t, root, "specs/business/invite", "src/specs/toolchain", "src/specs/invite", "src/backend/invite", "src")
+	write(t, root, "src/.metadata.json", `{"version": 2, "sources": [{"path": "`+T+`"}], "files": {"go.mod": ["`+T+`"]}}`+"\n")
+	sync(t, root, P, T, I, C, "src")
 	approve(t, root, "src")
 	return root
+}
+
+func TestImplementListsDirectoryUnits(t *testing.T) {
+	root := auditFixture(t)
+	write(t, root, P, strings.Replace(pSpec, "\nx\n", "\ny\n", 1))
+	sync(t, root, P, I)
+	out := render(load(t, root), false)
+	want := "# Implement\n\n1. `src/backend/invite/` — invite.ts: stale against `" + P + "`\n   run  Invite expiry — changed (" + P + ")\n\n# Next batch: 1 unit\n\n1. `src/backend/invite/` — invite.ts: stale against `" + P + "`\n   run  Invite expiry — changed (" + P + ")"
+	if !strings.Contains(out, want) {
+		t.Fatalf("output lacks %q:\n%s", want, out)
+	}
 }
 
 func TestAuditSectionAndDossier(t *testing.T) {
 	root := auditFixture(t)
 	g := load(t, root)
 	full := render(g, false)
-	if !strings.Contains(full, "No pending work.") || !strings.Contains(full, "# Audit\n\n- `src/backend/invite` owes an audit (/sdd-audit)") || strings.Contains(full, "`src` ") {
+	if !strings.Contains(full, "No pending work.") || !strings.Contains(full, "# Audit\n\n- `"+C+"` owes an audit (/sdd-audit)") || strings.Contains(full, "`src` ") {
 		t.Fatalf("full output:\n%s", full)
 	}
 	if batch := render(g, true); strings.Contains(batch, "# Audit") {
@@ -127,11 +145,11 @@ func TestAuditSectionAndDossier(t *testing.T) {
 	}
 	out := renderAudit(g, false, targets)
 	for _, want := range []string{
-		"# Audit\n\n- `src` audited 1; skipped (--all re-audits)\n\n## `src/backend/invite` — audited 0",
-		"Files:\n- invite.ts",
-		"Listed technical specs:\n- `src/specs/invite`: \"Invite endpoint\"",
-		"Listed perspective specs:\n- `specs/business/invite`",
-		"Candidates:\n- `src/specs/toolchain` — names this directory; global; The toolchain of every module.",
+		"# Audit\n\n## `src/`\n\n- `src` audited 1; skipped (--all re-audits)\n\n## `src/backend/invite/`\n\n### `" + C + "` — audited 0",
+		"File: " + C,
+		"Listed technical specs:\n- `" + I + "`: \"Invite endpoint\"",
+		"Listed perspective specs:\n- `" + P + "`",
+		"Candidates:\n- `" + T + "` — names this node; global; The toolchain of every module.",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("dossier lacks %q:\n%s", want, out)
@@ -140,60 +158,72 @@ func TestAuditSectionAndDossier(t *testing.T) {
 	if strings.Contains(out, "Perspectives to drop") || strings.Contains(out, "# Drift") {
 		t.Fatalf("dossier:\n%s", out)
 	}
+	if all := renderAudit(g, true, targets); !strings.Contains(all, "### `src` — audited 1\n\nFiles:\n- go.mod → `"+T+"`") {
+		t.Fatalf("directory node dossier:\n%s", all)
+	}
 	if _, err := codeNodes(g, []string{"src/specs"}); err == nil {
 		t.Fatal("a directory with no code node resolved")
 	}
-	if abs, err := codeNodes(g, []string{filepath.Join(root, "src", "backend") + "/"}); err != nil || len(abs) != 1 || abs[0].Rel != "src/backend/invite" {
+	if abs, err := codeNodes(g, []string{filepath.Join(root, "src", "backend") + "/"}); err != nil || len(abs) != 1 || abs[0].Rel != C {
 		t.Fatalf("absolute dir: %v %v", abs, err)
 	}
-	approve(t, root, "src/backend/invite")
+	if one, err := codeNodes(g, []string{C}); err != nil || len(one) != 1 || one[0].Rel != C {
+		t.Fatalf("file node: %v %v", one, err)
+	}
+	if one, err := codeNodes(g, []string{"src/.metadata.json", C + ".metadata.json"}); err != nil || len(one) != 2 || one[0].Rel != "src" || one[1].Rel != C {
+		t.Fatalf("metadata files: %v %v", one, err)
+	}
+	if _, err := codeNodes(g, []string{I + ".metadata.json"}); err == nil {
+		t.Fatal("a technical node's metadata resolved as a code node")
+	}
+	approve(t, root, C)
 	g = load(t, root)
 	if full := render(g, false); strings.Contains(full, "# Audit") {
 		t.Fatalf("approved node still owed:\n%s", full)
 	}
 	targets, _ = codeNodes(g, []string{"src/backend"})
-	if out := renderAudit(g, false, targets); !strings.Contains(out, "- `src/backend/invite` audited 1; skipped (--all re-audits)") || strings.Contains(out, "## `src/backend/invite`") {
+	if out := renderAudit(g, false, targets); !strings.Contains(out, "- `"+C+"` audited 1; skipped (--all re-audits)") || strings.Contains(out, "### `"+C+"`") {
 		t.Fatalf("skipped output:\n%s", out)
 	}
-	if out := renderAudit(g, true, targets); !strings.Contains(out, "## `src/backend/invite` — audited 1") {
+	if out := renderAudit(g, true, targets); !strings.Contains(out, "### `"+C+"` — audited 1") {
 		t.Fatalf("--all output:\n%s", out)
 	}
-	// Parked: content changed and written, a gap names the node.
+	// Parked: content changed and written, a gap names the directory.
 	write(t, root, "specs/TODO.md", "# TODO\n\n## Audit gap\n\n- **Ghost** (`src/backend/invite`) nothing fits.\n")
-	write(t, root, "src/backend/invite/invite.ts", "y\n")
-	refresh(t, root, "src/backend/invite")
+	write(t, root, C, "y\n")
+	refresh(t, root, C)
 	g = load(t, root)
-	if full := render(g, false); !strings.Contains(full, "- `src/backend/invite` parked: nothing fits (/sdd-design)") {
+	if full := render(g, false); !strings.Contains(full, "- `"+C+"` parked: nothing fits (/sdd-design)") {
 		t.Fatalf("parked node:\n%s", full)
 	}
 	targets, _ = codeNodes(g, []string{"src/backend"})
-	if out := renderAudit(g, false, targets); !strings.Contains(out, "- `src/backend/invite` parked: nothing fits (/sdd-design)") || strings.Contains(out, "## `src/backend/invite`") {
+	if out := renderAudit(g, false, targets); !strings.Contains(out, "- `"+C+"` parked: nothing fits (/sdd-design)") || strings.Contains(out, "### `"+C+"`") {
 		t.Fatalf("parked, not judged:\n%s", out)
 	}
-	if out := renderAudit(g, true, targets); !strings.Contains(out, "## `src/backend/invite` — audited 0\n\nParked: nothing fits (/sdd-design)") {
+	if out := renderAudit(g, true, targets); !strings.Contains(out, "### `"+C+"` — audited 0\n\nParked: nothing fits (/sdd-design)") {
 		t.Fatalf("parked judged under --all:\n%s", out)
 	}
 	// Blocked wins over parked: content changed again, not written.
-	write(t, root, "src/backend/invite/invite.ts", "z\n")
+	write(t, root, C, "z\n")
 	g = load(t, root)
-	if full := render(g, false); !strings.Contains(full, "- `src/backend/invite` owes an audit — blocked: `src/backend/invite/.metadata.json` does not match the content; run metadata --write src/backend/invite") {
+	if full := render(g, false); !strings.Contains(full, "- `"+C+"` owes an audit — blocked: `"+C+".metadata.json` does not match the content; run metadata --write "+C) {
 		t.Fatalf("blocked node:\n%s", full)
 	}
 	targets, _ = codeNodes(g, []string{"src/backend"})
-	if out := renderAudit(g, true, targets); !strings.Contains(out, "- `src/backend/invite` not judged — blocked:") || strings.Contains(out, "## `src/backend/invite`") {
+	if out := renderAudit(g, true, targets); !strings.Contains(out, "- `"+C+"` not judged — blocked:") || strings.Contains(out, "### `"+C+"`") {
 		t.Fatalf("blocked --all output:\n%s", out)
 	}
 	// Approved, then its spec changed: after /sdd-implement, never "skipped".
 	write(t, root, "specs/TODO.md", "# TODO\n")
-	refresh(t, root, "src/backend/invite")
-	approve(t, root, "src/backend/invite")
-	write(t, root, "specs/business/invite/spec.md", strings.Replace(pSpec, "\nx\n", "\ny\n", 1))
-	sync(t, root, "specs/business/invite")
+	refresh(t, root, C)
+	approve(t, root, C)
+	write(t, root, P, strings.Replace(pSpec, "\nx\n", "\ny\n", 1))
+	sync(t, root, P)
 	g = load(t, root)
 	targets, _ = codeNodes(g, []string{"src/backend"})
 	for _, all := range []bool{false, true} {
 		out := renderAudit(g, all, targets)
-		if !strings.Contains(out, "- `src/backend/invite` not judged — after /sdd-implement: stale against `specs/business/invite`") || strings.Contains(out, "skipped") || strings.Contains(out, "## `src/backend/invite`") {
+		if !strings.Contains(out, "- `"+C+"` not judged — after /sdd-implement: stale against `"+P+"`") || strings.Contains(out, "skipped") || strings.Contains(out, "### `"+C+"`") {
 			t.Fatalf("approved-then-stale (all=%v):\n%s", all, out)
 		}
 	}

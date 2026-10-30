@@ -18,9 +18,9 @@ func layout(t *testing.T) string {
 	write(t, root, ".sdd/.sdd-config.json", `{"version": 1, "paths": {"specs": "product", "src": "apps/code", "technical": "apps/design"}}`+"\n")
 	write(t, root, "product/business/invite/spec.md", pSpec)
 	write(t, root, "apps/design/invite/spec.md", "# Invite\n\nHow invites are built.\n\n## Place\n\n### Invite placement\n\nCode lives under `apps/code/invite/`.\n")
-	write(t, root, "apps/design/invite/.metadata.json", `{"version": 1, "sources": [{"path": "product/business/invite"}]}`+"\n")
+	write(t, root, "apps/design/invite/spec.md.metadata.json", `{"version": 2, "sources": [{"path": "product/business/invite/spec.md"}]}`+"\n")
 	write(t, root, "apps/code/invite/invite.ts", "x\n")
-	write(t, root, "apps/code/invite/.metadata.json", `{"version": 1, "sources": [{"path": "apps/design/invite"}, {"path": "product/business/invite"}]}`+"\n")
+	write(t, root, "apps/code/invite/invite.ts.metadata.json", `{"version": 2, "sources": [{"path": "apps/design/invite/spec.md"}, {"path": "product/business/invite/spec.md"}]}`+"\n")
 	write(t, root, "apps/code/README.md", "chrome\n")
 	write(t, root, "apps/code/stray/x.ts", "x\n")
 	return root
@@ -29,19 +29,19 @@ func layout(t *testing.T) string {
 func TestLayoutComesFromTheConfig(t *testing.T) {
 	root := layout(t)
 	g := load(t, root)
-	for rel, want := range map[string]Kind{"product/business/invite": Perspective, "apps/design/invite": Technical, "apps/code/invite": Code} {
+	for rel, want := range map[string]Kind{"product/business/invite/spec.md": Perspective, "apps/design/invite/spec.md": Technical, "apps/code/invite/invite.ts": Code} {
 		if n := g.Node(rel); n == nil || n.Kind != want {
 			t.Fatalf("%s: node %+v, want kind %s", rel, n, want)
 		}
 	}
-	if g.Node("product") != nil || g.Node("apps") != nil || g.Node("src/specs/invite") != nil {
+	if g.Node("product") != nil || g.Node("apps") != nil || g.Node("src/specs/invite/spec.md") != nil {
 		t.Fatal("a directory outside the layout became a node")
 	}
 	drift := g.Drift()
-	if !has(drift, "`apps/code/stray/` holds 1 file(s) outside any node") || has(drift, "`apps/code/` holds") {
+	if !has(drift, "`apps/code/stray/x.ts` is in no node: give it x.ts.metadata.json, or link it in apps/code/stray/.metadata.json") || has(drift, "README") {
 		t.Fatalf("uncovered and chrome: %v", drift)
 	}
-	for _, rel := range []string{"product/business/invite", "apps/design/invite", "apps/code/invite"} {
+	for _, rel := range []string{"product/business/invite/spec.md", "apps/design/invite/spec.md", "apps/code/invite/invite.ts"} {
 		sync(t, root, rel)
 	}
 	g = load(t, root)
@@ -54,16 +54,22 @@ func TestLayoutComesFromTheConfig(t *testing.T) {
 	if d := g.Drift(); len(d) != 1 || !strings.Contains(d[0], "stray") {
 		t.Fatalf("drift = %v", d)
 	}
+	// A legacy .metadata.json beside a technical spec of a beside-layout is a stray too.
+	write(t, root, "apps/design/old/spec.md", "# Old\n")
+	write(t, root, "apps/design/old/.metadata.json", `{"version": 1}`+"\n")
+	if d := load(t, root).Drift(); !has(d, "`apps/design/old/.metadata.json` is no node: the node of a spec is spec.md.metadata.json") {
+		t.Fatalf("drift = %v", d)
+	}
 }
 
 func TestGapsReadTodoOfTheSpecsRoot(t *testing.T) {
 	root := layout(t)
 	write(t, root, "product/TODO.md", "# TODO\n\n## Spec gap\n\n- **Invite expiry** (`business/invite`) leaves the grace period undefined.\n- **Ghost** (`business/invite`) matches nothing.\n- broken line\n\n## Audit gap\n\n- **Rate limiting** (`apps/code/invite`) code obeys a limit no technical spec states.\n")
 	g := load(t, root)
-	if gaps := g.gapsFor("spec", "product/business/invite"); len(gaps) != 2 {
+	if gaps := g.gapsFor("spec", "product/business/invite/spec.md"); len(gaps) != 2 {
 		t.Fatalf("spec gaps = %+v", gaps)
 	}
-	if s := g.AuditOf(g.Node("apps/code/invite")); s.Parked != "code obeys a limit no technical spec states" {
+	if s := g.AuditOf(g.Node("apps/code/invite/invite.ts")); s.Parked != "code obeys a limit no technical spec states" {
 		t.Fatalf("audit state = %+v", s)
 	}
 	drift := g.Drift()

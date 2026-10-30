@@ -1,4 +1,4 @@
-// Package meta is the .metadata.json of a node: its shape, its byte-stable
+// Package meta is the metadata of a node: its shape, its byte-stable
 // encoding, the node and rule hashes, and the rule-level delta between two
 // rule maps. The law is **Metadata** in the root AGENTS.md.
 package meta
@@ -19,9 +19,10 @@ import (
 )
 
 const (
-	Version   = 1
+	Version   = 2
 	Algorithm = "sha256"
-	FileName  = ".metadata.json"
+	Suffix    = ".metadata.json" // beside a file: <file>.metadata.json
+	FileName  = ".metadata.json" // of a directory node: <dir>/.metadata.json
 	SpecFile  = "spec.md"
 	LawFile   = "AGENTS.md"
 )
@@ -33,22 +34,32 @@ type Source struct {
 	Rules map[string]string `json:"rules,omitempty"`
 }
 
-// Metadata is the content of a .metadata.json.
+// Metadata is the content of a node's metadata file.
 type Metadata struct {
-	Version   int               `json:"version"`
-	Algorithm string            `json:"algorithm"`
-	Hash      string            `json:"hash"`
-	Modified  string            `json:"modified"`
-	Audited   *int              `json:"audited,omitempty"` // code nodes only: approvals at the current hash
-	Rules     map[string]string `json:"rules,omitempty"`
-	Sources   []Source          `json:"sources,omitempty"`
+	Version   int                 `json:"version"`
+	Algorithm string              `json:"algorithm"`
+	Hash      string              `json:"hash"`
+	Modified  string              `json:"modified"`
+	Audited   *int                `json:"audited,omitempty"` // code nodes only: approvals at the current hash
+	Rules     map[string]string   `json:"rules,omitempty"`
+	Sources   []Source            `json:"sources,omitempty"`
+	Files     map[string][]string `json:"files,omitempty"` // directory nodes only: file → the sources it is linked to
 }
 
-// Read parses dir/.metadata.json. A file without a version is a skeleton a
-// skill wrote by hand; any version other than Version, and any field this
-// shape does not know, is refused.
-func Read(dir string) (*Metadata, error) {
-	raw, err := os.ReadFile(filepath.Join(dir, FileName))
+// MetaRel is the root-relative metadata file of a node at rel: a directory
+// node's .metadata.json, or <rel>.metadata.json beside a file.
+func MetaRel(rel string, dir bool) string {
+	if dir {
+		return rel + "/" + FileName
+	}
+	return rel + Suffix
+}
+
+// Read parses the metadata file at path. A file without a version is a
+// skeleton a skill wrote by hand; any version other than Version, and any
+// field this shape does not know, is refused.
+func Read(path string) (*Metadata, error) {
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -65,13 +76,24 @@ func Read(dir string) (*Metadata, error) {
 }
 
 // Encode renders m byte-stably: fixed field order, sorted map keys, two-space
-// indent, no HTML escaping, one trailing newline.
+// indent, no HTML escaping, one trailing newline. A file linked to no source
+// is rendered as an empty list, never null.
 func Encode(m *Metadata) ([]byte, error) {
+	c := *m
+	if len(m.Files) > 0 {
+		c.Files = make(map[string][]string, len(m.Files))
+		for k, v := range m.Files {
+			if v == nil {
+				v = []string{}
+			}
+			c.Files[k] = v
+		}
+	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(m); err != nil {
+	if err := enc.Encode(&c); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil

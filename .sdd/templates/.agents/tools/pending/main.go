@@ -2,12 +2,13 @@
 // /sdd-implement owes, the next /sdd-implement continue batch, and the code nodes
 // /sdd-audit owes, with the dossier a judge needs.
 //
-// Usage: go run -C .agents/tools ./pending [--batch | --audit [--all] [dir...]] [--root <dir>]
+// Usage: go run -C .agents/tools ./pending [--batch | --audit [--all] [node|dir...]] [--root <dir>]
 //
 //	--batch       print only the next batch (or what /sdd-design owes when nothing
 //	              can be implemented) and the drift
 //	--audit       print the dossier of every code node that owes an audit — or
-//	              of the code nodes at or under each dir — and the drift
+//	              of the code nodes at or under each target — grouped by
+//	              directory, and the drift
 //	--all         with --audit, also the nodes already approved or parked
 //	--root <dir>  repository root, absolute (default: nearest directory at or
 //	              above the working directory with .sdd/.sdd-config.json)
@@ -19,22 +20,28 @@
 //	              ## Spec gap that parks one; dangling sources of technical
 //	              specs, with the rules recorded for them
 //	# Implement   the backlog, sources first: technical specs with no code node,
-//	              and code nodes stale against a source, holding a dangling one,
-//	              or missing a perspective node their technical specs serve —
-//	              each with its rules (new, changed, removed, renamed; park when
-//	              a ## Design gap holds it) and whether it runs or waits
+//	              and directories with code nodes stale against a source, holding
+//	              a dangling one, or missing a perspective node their technical
+//	              specs serve — each with the union of its rules (new, changed,
+//	              removed, renamed; park when a ## Design gap holds it) and
+//	              whether it runs or waits
 //	# Next batch  the units /sdd-implement continue runs now, at most 5, then the
 //	              units that wait and why
 //	# Audit       code nodes with no approval at their current content: owed
 //	              to /sdd-audit, blocked by drift, after /sdd-implement, or parked
-//	              under ## Audit gap. With --audit, one dossier per node:
-//	              files, listed technical and perspective specs, candidate
-//	              technical specs not listed (naming the directory, global,
-//	              the rest), and the perspective corrections that follow
+//	              under ## Audit gap. With --audit, the targeted nodes grouped by
+//	              directory — one judge per directory — the standing of each
+//	              node not judged, and one dossier per node judged: its file or
+//	              the files it links with their specs, listed technical and
+//	              perspective specs, candidate technical specs not listed
+//	              (naming the node, global, the rest), and the perspective
+//	              corrections that follow
 //	# Drift       metadata that does not match its content, missing or orphan
-//	              metadata, invalid sources, a code node with no technical
-//	              spec, files under the code root outside any node, duplicate titles,
-//	              cycles, gaps in TODO.md that match no rule or node
+//	              metadata, a metadata file that is no node, invalid sources, a
+//	              bad link of a directory node, a code node with no technical
+//	              spec, files under the specs root or the code root in no node,
+//	              duplicate titles, cycles, gaps in TODO.md that match no rule
+//	              or node
 //
 // With nothing pending it prints "No pending work." and the drift. Exit 0
 // with the answer; non-zero with the reason on stderr.
@@ -47,15 +54,18 @@ package main
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"tools/internal/graph"
+	"tools/internal/meta"
 	"tools/internal/repo"
 )
 
 const (
-	usage = "usage: go run -C .agents/tools ./pending [--batch | --audit [--all] [dir...]] [--root <dir>]"
+	usage = "usage: go run -C .agents/tools ./pending [--batch | --audit [--all] [node|dir...]] [--root <dir>]"
 	cap   = 5
 )
 
@@ -82,7 +92,7 @@ func main() {
 		}
 	}
 	if (batch && audit) || (!audit && (all || len(dirs) > 0)) {
-		fail("--all and dir... go with --audit, which excludes --batch\n"+usage, 2)
+		fail("--all and node|dir... go with --audit, which excludes --batch\n"+usage, 2)
 	}
 	dir, err := repo.Root(root)
 	if err != nil {
@@ -103,8 +113,8 @@ func main() {
 	fmt.Println(render(g, batch))
 }
 
-// codeNodes resolves dirs to the code nodes at or under each; every code node
-// when none is given.
+// codeNodes resolves targets to the code nodes at or under each; every code
+// node when none is given.
 func codeNodes(g *graph.Graph, dirs []string) ([]*graph.Node, error) {
 	if len(dirs) == 0 {
 		return g.CodeNodesUnder(g.Paths.Src), nil
@@ -116,7 +126,19 @@ func codeNodes(g *graph.Graph, dirs []string) ([]*graph.Node, error) {
 			d = repo.Rel(g.Root, d)
 		}
 		rel := repo.Clean(d)
-		nodes := g.CodeNodesUnder(rel)
+		var nodes []*graph.Node
+		switch base := path.Base(rel); {
+		case base == meta.FileName:
+			if n := g.Node(path.Dir(rel)); n != nil && n.IsDir {
+				nodes = []*graph.Node{n}
+			}
+		case strings.HasSuffix(base, meta.Suffix):
+			if n := g.Node(strings.TrimSuffix(rel, meta.Suffix)); n != nil && n.Kind == graph.Code {
+				nodes = []*graph.Node{n}
+			}
+		default:
+			nodes = g.CodeNodesUnder(rel)
+		}
 		if len(nodes) == 0 {
 			return nil, fmt.Errorf("no code node at or under `%s`", rel)
 		}
@@ -165,7 +187,7 @@ func render(g *graph.Graph, batchOnly bool) string {
 				out = append(out, "", "Waiting:")
 			}
 			for _, u := range wait {
-				out = append(out, fmt.Sprintf("- `%s` — %s", u.Node.Rel, u.Wait))
+				out = append(out, fmt.Sprintf("- `%s` — %s", u.Rel(), u.Wait))
 			}
 		}
 		out = append(out, "")
@@ -221,27 +243,36 @@ func standing(s graph.AuditState, owed string) string {
 	return fmt.Sprintf("`%s` %s (/sdd-audit)", s.Node.Rel, owed)
 }
 
-// renderAudit prints the standing of the targeted code nodes and a dossier
-// for each one a judge reads now, then the drift.
+// renderAudit prints the targeted code nodes grouped by directory — one
+// judge per directory — with the standing of each node not judged and a
+// dossier for each one a judge reads now, then the drift.
 func renderAudit(g *graph.Graph, all bool, targets []*graph.Node) string {
-	var lines, dossiers []string
+	groups := map[string][]*graph.Node{}
+	var dirs []string
 	for _, n := range targets {
-		s := g.AuditOf(n)
-		judge := s.Owed() || (all && len(s.Blocked) == 0 && s.Unit == "")
-		switch {
-		case judge:
-			dossiers = append(dossiers, dossier(g.Dossier(n))...)
-		case len(s.Blocked) > 0 || s.Unit != "" || s.Parked != "":
-			lines = append(lines, standing(s, "not judged"))
-		default:
-			lines = append(lines, fmt.Sprintf("`%s` audited %d; skipped (--all re-audits)", n.Rel, s.Audited))
+		dir := n.UnitDir()
+		if _, ok := groups[dir]; !ok {
+			dirs = append(dirs, dir)
 		}
+		groups[dir] = append(groups[dir], n)
 	}
+	sort.Strings(dirs)
 	var out []string
-	if len(lines) == 0 && len(dossiers) == 0 {
-		out = append(out, "No audit owed.")
-	} else {
-		out = append(out, "# Audit", "")
+	for _, dir := range dirs {
+		var lines, dossiers []string
+		for _, n := range groups[dir] {
+			s := g.AuditOf(n)
+			judge := s.Owed() || (all && len(s.Blocked) == 0 && s.Unit == "")
+			switch {
+			case judge:
+				dossiers = append(dossiers, dossier(g.Dossier(n))...)
+			case len(s.Blocked) > 0 || s.Unit != "" || s.Parked != "":
+				lines = append(lines, standing(s, "not judged"))
+			default:
+				lines = append(lines, fmt.Sprintf("`%s` audited %d; skipped (--all re-audits)", n.Rel, s.Audited))
+			}
+		}
+		out = append(out, fmt.Sprintf("## `%s/`", dir), "")
 		for _, line := range lines {
 			out = append(out, "- "+line)
 		}
@@ -249,6 +280,11 @@ func renderAudit(g *graph.Graph, all bool, targets []*graph.Node) string {
 			out = append(out, "")
 		}
 		out = append(out, dossiers...)
+	}
+	if len(out) == 0 {
+		out = append(out, "No audit owed.")
+	} else {
+		out = append([]string{"# Audit", ""}, out...)
 	}
 	if drift := g.Drift(); len(drift) > 0 {
 		out = append(out, "# Drift", "")
@@ -261,12 +297,25 @@ func renderAudit(g *graph.Graph, all bool, targets []*graph.Node) string {
 
 // dossier renders what a judge needs about one code node.
 func dossier(d graph.Dossier) []string {
-	out := []string{fmt.Sprintf("## `%s` — audited %d", d.State.Node.Rel, d.State.Audited), ""}
+	n := d.State.Node
+	out := []string{fmt.Sprintf("### `%s` — audited %d", n.Rel, d.State.Audited), ""}
 	if d.State.Parked != "" {
 		out = append(out, "Parked: "+d.State.Parked+" (/sdd-design)", "")
 	}
-	out = append(out, "Files:")
-	out = append(out, bullets(d.Files)...)
+	if n.IsDir {
+		out = append(out, "Files:")
+		var links []string
+		for _, f := range d.Files {
+			to := "none"
+			if specs := d.Links[f]; len(specs) > 0 {
+				to = "`" + strings.Join(specs, "`, `") + "`"
+			}
+			links = append(links, f+" → "+to)
+		}
+		out = append(out, bullets(links)...)
+	} else {
+		out = append(out, "File: "+n.Rel)
+	}
 	out = append(out, "", "Listed technical specs:")
 	var tech []string
 	for _, t := range d.Technical {
@@ -288,7 +337,7 @@ func dossier(d graph.Dossier) []string {
 	for _, c := range d.Candidates {
 		var why []string
 		if c.Names {
-			why = append(why, "names this directory")
+			why = append(why, "names this node")
 		}
 		if c.Global {
 			why = append(why, "global")
@@ -325,7 +374,8 @@ func quoted(titles []string) string {
 	return strings.Join(q, ", ")
 }
 
-// list renders units numbered, each with its rules: run, wait, or park per line.
+// list renders units numbered, each with its rules: run, wait, or park per
+// line; a node that waits inside a unit that runs is listed and skipped.
 func list(units []graph.Unit) []string {
 	var out []string
 	for i, u := range units {
@@ -333,7 +383,14 @@ func list(units []graph.Unit) []string {
 		if u.Wait != "" {
 			verb, reason = "wait", u.Reason+" — waits: "+u.Wait
 		}
-		out = append(out, fmt.Sprintf("%d. `%s` — %s", i+1, u.Node.Rel, reason))
+		out = append(out, fmt.Sprintf("%d. `%s` — %s", i+1, u.Rel(), reason))
+		if u.Wait == "" {
+			for _, nu := range u.Nodes {
+				if nu.Wait != "" {
+					out = append(out, fmt.Sprintf("   wait %s — %s", nu.Node.Label(), nu.Wait))
+				}
+			}
+		}
 		for _, r := range u.Rules {
 			if r.Parked != "" {
 				out = append(out, fmt.Sprintf("   park %s — %s (%s) — parked: %s", r.Title, r.State, r.Source, r.Parked))
