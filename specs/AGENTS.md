@@ -2,13 +2,7 @@
 
 This tree holds the product specifications. They are the single source of truth for what the system does and for whom.
 
-A perspective is documentation written from the viewpoint of one actor of the system: the business, the user, the operator.
-
-What lives in which perspective is named here. Each nested `AGENTS.md` fills the slots this file points at for that viewpoint.
-
-- **Business** (`specs/business/`): product policy of each business feature. Product policy lives here, not on the user surface.
-- **User** (`specs/user/`): what the user sees and does — screens, flows, copy. Screen behavior lives here, not in business.
-- **Operator** (`specs/operator/`): how the system is shipped and run — environments, deployment, observability — as policy. Nothing the product does for its users lives here.
+A perspective is documentation written from the viewpoint of one actor of the system. The actors of this product, and what lives in each perspective, are the catalog `PERSPECTIVES.md` (**Perspectives** below); each nested `AGENTS.md` is the law of one perspective: feature boundary, scope test, vocabulary.
 
 How any of it is built — stack, placement, contracts, persistence, toolchain — is a technical rule and lives in `src/specs/`, written by `/sdd-design` under `src/AGENTS.md`. No spec file under `specs/` cites `src/` (**Citation**).
 
@@ -18,6 +12,7 @@ Apply the **Writing gate** before mutating a spec file under `specs/`. Reach `CO
 
 ```
 AGENTS.md                        # this file: law of the tree
+PERSPECTIVES.md                  # catalog: the perspectives of this product
 TODO.md                          # parked work this repository cannot close yet
 CONTEXT.md                       # glossary: what domain terms are
 <perspective>/
@@ -44,6 +39,10 @@ The `AGENTS.md` of a perspective is law only: feature boundary, scope test, voca
 A rule whose owner is the perspective, not one feature — one obligation that holds across every feature of the perspective — lives in the sibling `spec.md`, to the same **Spec file** skeleton with the perspective name as `#`. It is a rule like any other: same **Rule format**, same **Title** rules, same normative body, served and implemented like any other.
 
 Create `spec.md` when its first rule exists.
+
+## Perspectives
+
+`PERSPECTIVES.md` is the catalog of the perspectives of this product: one bullet per perspective — the name in bold, its directory in parentheses, what it holds and what it leaves out. Reach it to know which perspectives exist before scoping a rule. A perspective enters the catalog in the session its directory and `AGENTS.md` are created, and leaves it in the session they are removed. Not a spec file, no node.
 
 ## Glossary
 

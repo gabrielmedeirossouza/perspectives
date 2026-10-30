@@ -11,7 +11,7 @@ description: >-
 
 # sdd-brainstorming
 
-Reach `specs/AGENTS.md` and `src/AGENTS.md` before framing the idea. Spec law, perspectives, scope, and postulates live in the first; the technical spec law, the source tree, and the implementation postulates in the second. The working-file law of `.sdd/` is in the root `AGENTS.md`.
+Reach `specs/AGENTS.md`, `specs/PERSPECTIVES.md`, and `src/AGENTS.md` before framing the idea. Spec law, scope, and postulates live in the first; the perspectives of this product in the second; the technical spec law, the source tree, and the implementation postulates in the third. The working-file law of `.sdd/` is in the root `AGENTS.md`.
 
 A brainstorm is a draft, not a rule. It never overrides `specs/`; it prepares the request `/sdd-spec` writes and the idea `/sdd-prototype` tries.
 

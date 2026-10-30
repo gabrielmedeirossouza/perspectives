@@ -4,6 +4,8 @@ Product specs (`specs/`) are the product source of truth: what the system does, 
 
 Cursor, Claude Code (v2.1.277+), Codex, and Antigravity (1.20.5+) read this file and every nested `AGENTS.md`. No `CLAUDE.md`, `CLAUDE.local.md`, or `GEMINI.md` exists in this repository: a `CLAUDE.md` or `CLAUDE.local.md` stops Claude Code from reading `AGENTS.md`.
 
+An `AGENTS.md` holds the structure of its tree: what lives where, who writes what, and the law that does not change with the product. What grows or varies with the product — which perspectives exist, global rules, the glossary, parked work, bug autopsies, testing guidelines — lives in a sibling file named by its theme (`PERSPECTIVES.md`, `spec.md`, `CONTEXT.md`, `TODO.md`, `BUG-AUTOPSIES.md`, `INCREMENTAL-TESTING-GUIDELINES.md`), referenced once from the `AGENTS.md` beside it. An `AGENTS.md` never grows with the product.
+
 Skills live once, in `.agents/skills/<name>/SKILL.md`. Claude Code reads only `.claude/skills/`, so `.claude/skills/<name>` is a symlink to `../../.agents/skills/<name>`. A new skill gets both; edits go to `.agents/skills/`.
 
 `/<name>` names a skill. Invoke it as `/<name>` in Cursor, Claude Code, and Antigravity, and as `$<name>` in Codex. `$ARGUMENTS` in a skill is the text typed with the invocation; where the harness leaves it literal, read it from the user's message.

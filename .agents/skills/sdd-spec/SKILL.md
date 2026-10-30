@@ -12,7 +12,7 @@ description: >-
 
 # sdd-spec
 
-Reach `specs/AGENTS.md` and the nested `AGENTS.md` of the target perspective before scoping or writing. The perspectives that exist are named in `specs/AGENTS.md`. Law, tree, rule format, glossary shape, postulates, scope, and metadata live there — not here.
+Reach `specs/AGENTS.md`, `specs/PERSPECTIVES.md`, and the nested `AGENTS.md` of the target perspective before scoping or writing. The perspectives that exist are named in `specs/PERSPECTIVES.md`. Law, tree, rule format, glossary shape, postulates, scope, and metadata live there — not here.
 
 One request carries product and technical items. Splitting them is this skill's job, not the user's: the product items are written here; the technical ones are named for `/sdd-design`, after the product rules they will serve exist.
 
