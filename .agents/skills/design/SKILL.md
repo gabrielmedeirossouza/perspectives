@@ -30,7 +30,7 @@ $ARGUMENTS
 
 Examples: `/design invite:HTTP contract and persistence`; `/design toolchain:test runner`; `/design review invite against the new expiry rule`; `/design remove http-client`.
 
-The argument is a **request**. The name is optional; locate the technical spec from the text. **No argument = run `go run -C .agents/tools ./pending`, present its `# Design` section — perspective specs with no technical spec, technical specs stale or dangling — and stop.** Ask which to take. Do not infer the target from a prior session or a git branch.
+The argument is a **request**. The name is optional; locate the technical spec from the text. **No argument = run `go run -C .agents/tools ./pending`, present its `# Design` section — perspective specs with no technical spec, technical specs stale or dangling — and the `## Audit gap` items of `TODO.md` — code nodes no technical spec governs — and stop.** Ask which to take. Do not infer the target from a prior session or a git branch.
 
 ## Steps
 
@@ -43,7 +43,7 @@ The argument is a **request**. The name is optional; locate the technical spec f
 5. **Order** the items: dependencies first — a global technical spec before the ones that depend on it; the rule another cites before the citing one.
 6. **Interview** until shared understanding. One question at a time, in the order of step 5, with a recommendation: the option, why, and the cost of the rejected alternative. Walk every branch; if an answer opens a new one, follow it. An indirection needs its pain trigger named. Check drafts against P1–P7 and the technical **Vocabulary** before proposing a write.
 7. **Confirm:** "Shall I apply these changes?" Only then write.
-8. **Write** `src/specs/<name>/spec.md` to the skeleton. For a new node, write `.metadata.json` as `{"version": 1, "sources": [{"path": "..."}]}`: the perspective nodes the spec serves and the technical nodes it depends on, paths relative to the repository root. Then `go run -C .agents/tools ./metadata --sync src/specs/<name>`. A stale spec that needs no change after review is only synced. A dangling source is a perspective spec that is gone: remove the rules that served only it, drop its `sources[].path`, then sync — or delete the whole spec when nothing of it remains. Park a product hole under `## Spec gap` of `TODO.md`; delete the `## Design gap` items this write closes. Removing a spec deletes its directory; the code nodes that listed it show as dangling in `pending`, for `/implement`.
+8. **Write** `src/specs/<name>/spec.md` to the skeleton. For a new node, write `.metadata.json` as `{"version": 1, "sources": [{"path": "..."}]}`: the perspective nodes the spec serves and the technical nodes it depends on, paths relative to the repository root. Then `go run -C .agents/tools ./metadata --sync src/specs/<name>`. A stale spec that needs no change after review is only synced. A dangling source is a perspective spec that is gone: remove the rules that served only it, drop its `sources[].path`, then sync — or delete the whole spec when nothing of it remains. Park a product hole under `## Spec gap` of `TODO.md`; delete the `## Design gap` and `## Audit gap` items this write closes. Removing a spec deletes its directory; the code nodes that listed it show as dangling in `pending`, for `/implement`.
 9. **Report** by technical spec: what was written, where, which product rules it serves, what was synced without change, what was parked, and the product items handed to `/spec`.
 
 ### Interview
@@ -56,4 +56,4 @@ The argument is a **request**. The name is optional; locate the technical spec f
 
 Postulate violation: name the P, the passage, the recommended fix. Vocabulary violation: the facultative modal, `or equivalent`, or `X or Y` to replace by one decision.
 
-Permissions: create, edit, and delete `src/specs/<name>/spec.md` with its directory, and the `sources[].path` of its `.metadata.json`; run the metadata tool; edit `TODO.md` (`## Spec gap`, `## Design gap`). Out of scope: `perspectives/` (`/spec`); code and code nodes under `src/` (`/implement`); `CONTEXT.md`; any hash in a `.metadata.json`.
+Permissions: create, edit, and delete `src/specs/<name>/spec.md` with its directory, and the `sources[].path` of its `.metadata.json`; run the metadata tool (never `--approve`, which is `/audit`'s); edit `TODO.md` (`## Spec gap`, `## Design gap`, and the `## Audit gap` items a write closes). Out of scope: `perspectives/` (`/spec`); code and code nodes under `src/` (`/implement`); `CONTEXT.md`; any hash in a `.metadata.json`.

@@ -34,7 +34,7 @@ Examples: `/commit`; `/commit remove review skills and TDD`. The hint informs th
 
 1. **Read** the state: `git branch --show-current`, `git status --porcelain`, `git diff`, `git diff --staged`, untracked file contents, and `git log --oneline -n 20`.
 2. **Stop** and report when: there is nothing to commit; HEAD is detached; the current branch is `prototype/*` (prototypes stay local; `/prototype` commits them); a merge, rebase, or cherry-pick is in progress; a file has conflict markers; a file carries a secret or matches an ignored-secret pattern (`.env`, `*.env`, keys, tokens) without being ignored.
-3. **Group** the changes into atomic commits: one logical change per commit, one type per commit. A file belongs to one commit; a file with mixed changes goes with its main change. A `.metadata.json` whose own hash moved goes with the content it hashes; a sync that changed only its recorded sources is a commit of its own, `docs(<scope>): acknowledge <source>`. Order the commits so none depends on a file a later commit adds.
+3. **Group** the changes into atomic commits: one logical change per commit, one type per commit. A file belongs to one commit; a file with mixed changes goes with its main change. A `.metadata.json` whose own hash moved goes with the content it hashes; a sync that changed only its recorded sources is a commit of its own, `docs(<scope>): acknowledge <source>`; an approval or a sources edit of `/audit`, which never moves a hash, is a commit of its own, `docs(<scope>): audit sources`. Order the commits so none depends on a file a later commit adds.
 4. **Classify** each group by **Type** and name its scope.
 5. **Commit** each group in order: `git add -- <paths>` with explicit paths (deletions included), then `git commit -m "<header>" -m "<body>"`. Never `git add -A`, `git add .`, `--amend`, or `--no-verify`. The pre-commit hook refreshes and stages the `.metadata.json` of the nodes in the group; that is expected. A failing hook → stop and report; do not bypass it.
 6. **Push** the current branch: `git push` when it has an upstream, otherwise `git push -u origin <branch>`. Never `--force` or `--force-with-lease`. A rejected push → stop and report; do not pull, rebase, or merge.
@@ -53,7 +53,7 @@ Out of scope: version tags, version-file bumps, changelogs, pull requests, histo
 | `perf` | makes existing behavior faster without changing it | patch |
 | `refactor` | restructures code without changing behavior | none |
 | `test` | only adds or changes tests | none |
-| `docs` | changes specs under `perspectives/` or `src/specs/` with their `.metadata.json`, `CONTEXT.md`, `TODO.md`, `AGENTS.md`, brainstorms under `.sdd/brainstorming/`, or other prose | none |
+| `docs` | changes specs under `perspectives/` or `src/specs/` with their `.metadata.json`, a code node's `.metadata.json` in `audited` or `sources` only, `CONTEXT.md`, `TODO.md`, `AGENTS.md`, brainstorms under `.sdd/brainstorming/`, or other prose | none |
 | `build` | changes dependencies, manifests, or build configuration | none |
 | `ci` | changes CI configuration | none |
 | `chore` | changes agent skills under `.agents/skills/`, tools under `.agents/tools/`, hooks under `.githooks/`, or other harness tooling | none |
