@@ -61,7 +61,10 @@ func Refresh(n *Node, now time.Time) (*meta.Metadata, error) {
 }
 
 // Sync is Refresh plus the current hash and rules of every source. It refuses
-// a dangling or invalid source, a source whose own metadata has drift, a code
+// a spec with a link of its own that names nothing (its writer syncs it only
+// once the link is fixed), a dangling or invalid source, a source whose
+// content or metadata is not what it claims — a broken link of a source is
+// its writer's drift and refuses nothing here — a code
 // node that lists no technical spec, a code node whose sources do not match
 // the perspective nodes its technical specs serve, and a code node that waits
 // on /sdd-design. Recording a source listed since the last sync returns audited
@@ -71,14 +74,17 @@ func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(n.refErrs) > 0 {
+		return nil, errors.New(strings.Join(n.refErrs, "\n"))
+	}
 	for i, e := range n.Sources {
 		switch {
 		case e.Dangling():
 			return nil, fmt.Errorf("`%s` lists `%s`, which is no node%s; drop it from sources", n.Rel, e.Source.Path, g.hint(e.Source.Path))
 		case !e.Valid():
 			return nil, fmt.Errorf("`%s` (%s) lists `%s` (%s); %s", n.Rel, n.Kind, e.To.Rel, e.To.Kind, allowed(n.Kind))
-		case g.HasDrift(e.To):
-			return nil, fmt.Errorf("`%s` has drift; fix it first: %s", e.To.Rel, g.NodeDrift(e.To)[0])
+		case len(g.blocking(e.To)) > 0:
+			return nil, fmt.Errorf("`%s` has drift; fix it first: %s", e.To.Rel, g.blocking(e.To)[0])
 		}
 		if e.Source.Hash == "" && m.Audited != nil {
 			*m.Audited = 0

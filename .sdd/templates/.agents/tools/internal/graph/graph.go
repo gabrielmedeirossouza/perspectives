@@ -265,10 +265,10 @@ func Load(root string) (*Graph, error) {
 			n.Rules, n.Order, n.RuleErr = meta.RuleHashes(n.text)
 		}
 	}
-	anchors := map[string]map[string]bool{}
+	anchors, listings := map[string]map[string]bool{}, map[string]map[string]bool{}
 	for _, n := range g.Nodes {
 		if n.text != "" {
-			n.refErrs = g.brokenLinks(n, anchors)
+			n.refErrs = g.brokenLinks(n, anchors, listings)
 			n.text = ""
 		}
 	}
@@ -289,11 +289,14 @@ func Load(root string) (*Graph, error) {
 	return g, nil
 }
 
-// brokenLinks lists the relative links of a spec that name no file, or a
-// heading of level 1–3 that the markdown file they name does not hold, its
-// slug computed as Anchors of specs/AGENTS.md says. A link with a scheme is
-// not followed. anchors caches the slugs of each file read.
-func (g *Graph) brokenLinks(n *Node, anchors map[string]map[string]bool) []string {
+// brokenLinks lists the links of a spec that name nothing in the repository,
+// or a heading the markdown file they name does not hold, its slug computed
+// as Anchors of specs/AGENTS.md says. A path is resolved against the spec's
+// directory, or against the repository root when it starts with `/`; a query
+// is ignored; every segment must match a name on disk exactly, case included,
+// as on a case-sensitive host. A link with a scheme is not followed. anchors
+// caches the slugs of each file read, listings the names of each directory.
+func (g *Graph) brokenLinks(n *Node, anchors, listings map[string]map[string]bool) []string {
 	owner := "/sdd-spec"
 	if n.Kind == Technical {
 		owner = "/sdd-design"
@@ -304,6 +307,7 @@ func (g *Graph) brokenLinks(n *Node, anchors map[string]map[string]bool) []strin
 			continue
 		}
 		target, frag, _ := strings.Cut(link, "#")
+		target, _, _ = strings.Cut(target, "?")
 		if t, err := url.PathUnescape(target); err == nil {
 			target = t
 		}
@@ -311,15 +315,17 @@ func (g *Graph) brokenLinks(n *Node, anchors map[string]map[string]bool) []strin
 			frag = f
 		}
 		rel := n.Rel
-		if target != "" {
+		switch {
+		case strings.HasPrefix(target, "/"):
+			rel = path.Clean(strings.TrimLeft(target, "/"))
+		case target != "":
 			rel = path.Clean(path.Join(path.Dir(n.Rel), target))
 		}
-		abs := filepath.Join(g.Root, filepath.FromSlash(rel))
 		if rel == ".." || strings.HasPrefix(rel, "../") {
 			out = append(out, fmt.Sprintf("`%s` links `%s`, which leaves the repository; fix the link (%s)", n.Rel, link, owner))
 			continue
 		}
-		if _, err := os.Stat(abs); err != nil {
+		if !g.exists(rel, listings) {
 			out = append(out, fmt.Sprintf("`%s` links `%s`, but `%s` does not exist; fix the link (%s)", n.Rel, link, rel, owner))
 			continue
 		}
@@ -329,9 +335,9 @@ func (g *Graph) brokenLinks(n *Node, anchors map[string]map[string]bool) []strin
 		slugs, ok := anchors[rel]
 		if !ok {
 			slugs = map[string]bool{}
-			if text, err := os.ReadFile(abs); err == nil {
-				for _, s := range md.Sections(string(text)) {
-					slugs[md.Slug(s.Title)] = true
+			if text, err := os.ReadFile(filepath.Join(g.Root, filepath.FromSlash(rel))); err == nil {
+				for _, s := range md.Anchors(string(text)) {
+					slugs[s] = true
 				}
 			}
 			anchors[rel] = slugs
@@ -341,6 +347,31 @@ func (g *Graph) brokenLinks(n *Node, anchors map[string]map[string]bool) []strin
 		}
 	}
 	return out
+}
+
+// exists reports whether a root-relative path names a file or directory whose
+// every segment matches a name on disk exactly.
+func (g *Graph) exists(rel string, listings map[string]map[string]bool) bool {
+	if rel == "." {
+		return true
+	}
+	dir := "."
+	for _, seg := range strings.Split(rel, "/") {
+		names, ok := listings[dir]
+		if !ok {
+			names = map[string]bool{}
+			entries, _ := os.ReadDir(filepath.Join(g.Root, filepath.FromSlash(dir)))
+			for _, e := range entries {
+				names[e.Name()] = true
+			}
+			listings[dir] = names
+		}
+		if !names[seg] {
+			return false
+		}
+		dir = path.Join(dir, seg)
+	}
+	return true
 }
 
 var schemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
@@ -801,6 +832,18 @@ func malformed(n *Node) string {
 		return fmt.Sprintf("`%s` is no %s; a %s node is %s; delete its metadata", n.Rel, meta.SpecFile, n.Kind, meta.SpecFile)
 	}
 	return ""
+}
+
+// blocking lists the drift of n that makes its content or metadata not what
+// it claims.
+func (g *Graph) blocking(n *Node) []string {
+	var out []string
+	for _, f := range g.findings(n) {
+		if f.blocking {
+			out = append(out, f.msg)
+		}
+	}
+	return out
 }
 
 // HasDrift reports whether NodeDrift finds anything.

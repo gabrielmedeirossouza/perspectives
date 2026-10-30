@@ -43,10 +43,10 @@
 //	              duplicate titles, cycles, gaps in TODO.md that match no rule
 //	              or node
 //
-// With nothing to design or implement it prints "Nothing to design or
-// implement." before the audit and the drift, and "No pending work." when
-// those are empty too. Exit 0
-// with the answer; non-zero with the reason on stderr.
+// With no # Design and no # Implement it prints "Nothing stale, dangling, or
+// unconsumed." before the audit and the drift, and "No pending work." when
+// those are empty too. Exit 0 with the answer; non-zero with the reason on
+// stderr.
 //
 // It implements **Continue** of .agents/skills/sdd-implement/SKILL.md and
 // **Inventory** of .agents/skills/sdd-audit/SKILL.md over the states of
@@ -167,7 +167,7 @@ func render(g *graph.Graph, batchOnly bool) string {
 		if len(audit) == 0 && len(drift) == 0 {
 			out = append(out, "No pending work.")
 		} else {
-			out = append(out, "Nothing to design or implement.")
+			out = append(out, "Nothing stale, dangling, or unconsumed.")
 		}
 	}
 	if !batchOnly {

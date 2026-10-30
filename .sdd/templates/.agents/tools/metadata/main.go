@@ -84,7 +84,7 @@ func main() {
 	case len(opts.dirs) == 0:
 		targets = g.Nodes
 	default:
-		targets, err = resolve(g, root, opts.dirs, opts.sync || opts.approve)
+		targets, err = resolve(g, root, opts.dirs, opts.sync || opts.approve, !opts.write && !opts.sync && !opts.approve)
 	}
 	check(err)
 	for _, line := range uncovered {
@@ -213,7 +213,7 @@ func parse(args []string) options {
 // node path or its metadata file names one node; a directory names its
 // directory node and every node at or under it — refused when single is
 // set and the directory names more than one.
-func resolve(g *graph.Graph, root string, targets []string, single bool) ([]*graph.Node, error) {
+func resolve(g *graph.Graph, root string, targets []string, single, checking bool) ([]*graph.Node, error) {
 	var out []*graph.Node
 	seen := map[*graph.Node]bool{}
 	add := func(nodes ...*graph.Node) {
@@ -247,6 +247,9 @@ func resolve(g *graph.Graph, root string, targets []string, single bool) ([]*gra
 			} else {
 				nodes = g.NodesUnder(rel)
 			}
+		}
+		if len(nodes) == 0 && checking && len(g.Loose([]string{rel})) > 0 {
+			continue // the check lists its files in no node
 		}
 		if len(nodes) == 0 {
 			return nil, fmt.Errorf("`%s` is no node: a node is a file with <file>%s beside it, or a directory under %s/ whose %s links its files; a directory names every node at or under it", rel, meta.Suffix, g.Paths.Src, meta.FileName)

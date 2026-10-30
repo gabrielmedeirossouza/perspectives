@@ -133,7 +133,7 @@ func TestAuditSectionAndDossier(t *testing.T) {
 	root := auditFixture(t)
 	g := load(t, root)
 	full := render(g, false)
-	if !strings.Contains(full, "Nothing to design or implement.") || strings.Contains(full, "No pending work.") || !strings.Contains(full, "# Audit\n\n- `"+C+"` owes an audit (/sdd-audit)") || strings.Contains(full, "`src` ") {
+	if !strings.Contains(full, "Nothing stale, dangling, or unconsumed.") || strings.Contains(full, "No pending work.") || !strings.Contains(full, "# Audit\n\n- `"+C+"` owes an audit (/sdd-audit)") || strings.Contains(full, "`src` ") {
 		t.Fatalf("full output:\n%s", full)
 	}
 	if batch := render(g, true); strings.Contains(batch, "# Audit") {
@@ -238,7 +238,7 @@ func TestNoPendingWorkOnlyWhenNothingIsOwed(t *testing.T) {
 		t.Fatalf("empty project:\n%s", out)
 	}
 	write(t, root, "src/loose.ts", "export {};\n")
-	if out := render(load(t, root), false); !strings.HasPrefix(out, "Nothing to design or implement.\n# Drift") {
+	if out := render(load(t, root), false); !strings.HasPrefix(out, "Nothing stale, dangling, or unconsumed.\n# Drift") {
 		t.Fatalf("project with drift only:\n%s", out)
 	}
 }
