@@ -348,6 +348,7 @@ type mapper struct {
 	tokens   [][2]string         // old → new, longest first; an identity pair protects its token
 	active   bool                // some token changes
 	skipped  []skipped
+	seen     map[string]bool // template paths already reported as skipped
 }
 
 type skipped struct{ path, note string }
@@ -356,7 +357,7 @@ type skipped struct{ path, note string }
 type mapped struct{ path, from string }
 
 func newMapper(cfg, tpl config.Config) *mapper {
-	m := &mapper{cfg: cfg, tpl: tpl, kinds: map[string][]string{}}
+	m := &mapper{cfg: cfg, tpl: tpl, kinds: map[string][]string{}, seen: map[string]bool{}}
 	for _, k := range tpl.Perspectives {
 		m.kinds[k.Name] = nil
 	}
@@ -386,12 +387,11 @@ func newMapper(cfg, tpl config.Config) *mapper {
 // project maps a template tree to project paths, mapping tokens in .md files.
 func (m *mapper) project(t tree) map[mapped]entry {
 	out := map[mapped]entry{}
-	seen := map[string]bool{}
 	for _, p := range sortedTree(t) {
 		targets, note := m.paths(p)
 		if note != "" {
-			if !seen[p] {
-				seen[p] = true
+			if !m.seen[p] {
+				m.seen[p] = true
 				m.skipped = append(m.skipped, skipped{p, note})
 			}
 			continue
