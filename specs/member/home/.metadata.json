@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "algorithm": "sha256",
+  "hash": "07b28a94019412ed2f7cad148f6516de496104a390e17a0b84c721eec212e0a7",
+  "modified": "2026-10-30T19:11:18Z",
+  "rules": {
+    "Home content": "606d53232bb12620de6d7d00555d77701bcfce6f306bfd2aabfb10e05edf1202",
+    "Home route": "8a6c982411fbee24462ba60b215803b1ebe4a82ef989a1f5dbd0e81dde6667a2"
+  }
+}
