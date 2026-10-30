@@ -1,12 +1,12 @@
 {
-  "version": 1,
+  "version": 2,
   "algorithm": "sha256",
   "hash": "111f64af633bbe5bee75b0f62269465f34d7466f2e9fb574754ac982df38c03b",
-  "modified": "2026-10-30T19:14:10Z",
-  "audited": 1,
+  "modified": "2026-10-30T21:17:11Z",
+  "audited": 0,
   "sources": [
     {
-      "path": "src/specs/toolchain",
+      "path": "src/specs/toolchain/spec.md",
       "hash": "eb6c55ddc036d40f99aee5116a53a922e36711b55454b9a060bedb60de03691e",
       "rules": {
         "Fastify as the HTTP server": "f1c16ce3b4cf964edaa12c8f9db17ca356de3e6d16fc70c431dc67530b118baf",
@@ -18,5 +18,13 @@
         "npm workspaces under src": "de2b7cc0fa711e4fc11ef2bc2db1e987053e8b2783a10c475dc42accee04d252"
       }
     }
-  ]
+  ],
+  "files": {
+    "package-lock.json": [
+      "src/specs/toolchain/spec.md"
+    ],
+    "package.json": [
+      "src/specs/toolchain/spec.md"
+    ]
+  }
 }

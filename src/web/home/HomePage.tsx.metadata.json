@@ -1,0 +1,38 @@
+{
+  "version": 2,
+  "algorithm": "sha256",
+  "hash": "b1bb1e65a1fa57883c59590731f9d5010d61c6f75581325b6ad3e494dc74beb8",
+  "modified": "2026-10-30T21:17:11Z",
+  "audited": 0,
+  "sources": [
+    {
+      "path": "src/specs/toolchain/spec.md",
+      "hash": "eb6c55ddc036d40f99aee5116a53a922e36711b55454b9a060bedb60de03691e",
+      "rules": {
+        "Fastify as the HTTP server": "f1c16ce3b4cf964edaa12c8f9db17ca356de3e6d16fc70c431dc67530b118baf",
+        "Ignored artifacts": "4eafe15044967cb674276247fb892d1cb8e525a0299a9a033e01791ba1629cb7",
+        "Node.js 26 and TypeScript 5": "f4c94dd7052663399125cadf18a0212eb511b07eb073a52b05d5ca5e4dc993bb",
+        "One directory per app": "1a1730689899f06d7187f418bdb1a9ebb0aab494ddad4353ff713cf4c1431a3d",
+        "React on Vite": "1295c04af675db4b1295d77efa876b7e857ce9dc3a2105780056403dcee7c0b1",
+        "Vitest as the test runner": "7004d1917c4ab19f3028c0a8fde295c89828f1fcbe58a4b65dffc75a67afc25f",
+        "npm workspaces under src": "de2b7cc0fa711e4fc11ef2bc2db1e987053e8b2783a10c475dc42accee04d252"
+      }
+    },
+    {
+      "path": "src/specs/home/spec.md",
+      "hash": "2b02ad3e4eb0d7ae73ac8f57ca36725d44866e6015a432a18958c4da1cfb6321",
+      "rules": {
+        "Home page of the web app": "f5b8e546c2cdf235d542b522971c131862ab57335df0efe894d737e598e501e2",
+        "Home route registration": "953006810e10dc2a7c1c7d4ad30dea9e0792661b576a444a3f27aba28b136a86"
+      }
+    },
+    {
+      "path": "specs/member/home/spec.md",
+      "hash": "07b28a94019412ed2f7cad148f6516de496104a390e17a0b84c721eec212e0a7",
+      "rules": {
+        "Home content": "606d53232bb12620de6d7d00555d77701bcfce6f306bfd2aabfb10e05edf1202",
+        "Home route": "8a6c982411fbee24462ba60b215803b1ebe4a82ef989a1f5dbd0e81dde6667a2"
+      }
+    }
+  ]
+}
