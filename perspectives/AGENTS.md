@@ -80,7 +80,7 @@ _Avoid_: profile, permission group
 
 `TODO.md` is the stateful working set of work this repository still owes. Park what the current session cannot close — a needed feature or rule that does not exist, and this request does not create. Interview closes decisions the user can make now. Write only the rules this session can close.
 
-Three writers, one heading each. `/spec` parks under `## Missing spec` a needed feature or rule that does not exist and the request does not create. `/design` parks under `## Spec gap` a product rule it cannot design against — the body is open (a hole, an ambiguity, an undefined real path) or the rule does not exist yet; the spec write that closes it deletes the item. `/implement` parks under `## Design gap` a rule it cannot implement because the technical spec is open — an unnamed mechanism, an open alternative, a hole `/design` has to close or escalate; the design write that closes it deletes the item. `pending` reads both gap headings: a design gap parks its rule out of the next batch, and a spec gap is named on the stale technical spec it holds.
+Four writers, one heading each. `/spec` parks under `## Missing spec` a needed feature or rule that does not exist and the request does not create. `/design` parks under `## Spec gap` a product rule it cannot design against — the body is open (a hole, an ambiguity, an undefined real path) or the rule does not exist yet; the spec write that closes it deletes the item. `/implement` parks under `## Design gap` a rule it cannot implement because the technical spec is open — an unnamed mechanism, an open alternative, a hole `/design` has to close or escalate; the design write that closes it deletes the item. `/audit` parks under `## Audit gap` a code node no technical spec governs — its judge found no spec under `src/specs/` whose rules the code obeys; the design write that closes it deletes the item. `pending` reads the three gap headings: a design gap parks its rule out of the next batch, a spec gap is named on the stale technical spec it holds, and an audit gap marks its code node as parked under `# Audit`, for `/design`.
 
 Read it at the start of a spec write, and again after writing a feature or rule that may unblock an item. Park in the same session as the block. Delete the item in the same session the parked work is done. A finished item leaves the file; this is remaining work, not a changelog.
 
@@ -104,9 +104,13 @@ Work this repository still owes, parked because the current session cannot close
 ## Design gap
 
 - **Invite token storage** (`src/specs/invite`) names no persistence package.
+
+## Audit gap
+
+- **Rate limiting** (`src/api`) code obeys a limit no technical spec states.
 ```
 
-- One line per item, no checkbox: the work, the intended owner, and the blocker. The owner is `perspective/feature`, `perspective` for a global rule, or `src/specs/<name>` for a technical spec. A gap names the rule title verbatim in bold, then the owner in backticks between parentheses, then the blocker; `pending` parses that shape.
+- One line per item, no checkbox: the work, the intended owner, and the blocker. The owner is `perspective/feature`, `perspective` for a global rule, `src/specs/<name>` for a technical spec, or the code node for an audit gap. A spec or design gap names the rule title verbatim in bold; an audit gap names what the missing technical spec would decide. Then the owner in backticks between parentheses, then the blocker; `pending` parses that shape.
 - English, matching spec language.
 - Group under `##` when clusters emerge; a flat list is fine for one subject.
 

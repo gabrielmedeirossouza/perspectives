@@ -37,7 +37,9 @@ Sync between a spec and what consumes it is not written by hand. Every consumer 
 
 **Content** = every regular file git tracks or would track (not ignored) under the node's directory, recursively, except `.metadata.json`, `AGENTS.md`, the files directly under `src/` ending in `.md` (chrome), and the subtrees of other nodes. **Hash** = sha256 of the sorted entries `<path relative to the node>\0<sha256 of the bytes>\n`. Raw bytes, no normalization. **Rules**, when the node holds `spec.md`: each `###` title outside code fences → sha256 of its body, the lines up to the next heading of level 1–3 with blank lines at both ends removed. The title stays outside its hash, so a rename is told from a change.
 
-**Sources** a node may list: a technical node lists the perspective nodes it serves and the technical nodes it depends on; a code node lists every technical node whose rules its code obeys directly — not only the one it is named after — and every perspective node those serve, so a product-only change reaches the code; a perspective node lists none. A product change reaches code only through the code nodes that list that perspective; it does not travel through technical dependencies, which is why a technical node no code node lists is pending.
+**Sources** a node may list: a technical node lists the perspective nodes it serves and the technical nodes it depends on; a code node lists at least one technical node — every technical node whose rules its code obeys directly, not only the one it is named after — and every perspective node those serve, so a product-only change reaches the code; a perspective node lists none. A product change reaches code only through the code nodes that list that perspective; it does not travel through technical dependencies, which is why a technical node no code node lists is pending.
+
+Every field, for illustration; which ones a node carries depends on its kind, as stated below the example:
 
 ```json
 {
@@ -45,6 +47,7 @@ Sync between a spec and what consumes it is not written by hand. Every consumer 
   "algorithm": "sha256",
   "hash": "<hash of this node>",
   "modified": "2026-10-29T18:04:12Z",
+  "audited": 0,
   "rules": { "<title>": "<sha256 of the body>" },
   "sources": [
     { "path": "perspectives/business/invite", "hash": "<hash the source had at the last sync>", "rules": { "<title>": "<hash>" } }
@@ -52,18 +55,20 @@ Sync between a spec and what consumes it is not written by hand. Every consumer 
 }
 ```
 
-`modified` moves only when `hash` moves. `rules` is absent without `spec.md`; `sources` is absent on a perspective node. A skill writes only the skeleton — `version` and `sources[].path`; every hash is the tool's. The file is never edited by hand beyond those fields.
+`modified` moves only when `hash` moves. `audited` is present only on a code node (**Audit** below). `rules` is absent without `spec.md`; `sources` is absent on a perspective node. A skill writes only the skeleton — `version` and `sources[].path`; every hash and `audited` are the tool's. The file is never edited by hand beyond those fields.
 
 **States**, computed by `pending`, never stored:
 
 | State | Means | Owed by |
 |-------|-------|---------|
-| drift | a `.metadata.json` missing, orphan (no `spec.md` beside it), unreadable, or not matching its content; a duplicate rule title; a source a node may not list; a perspective node a code node lists that none of its technical specs serves; a file under `src/` outside any node; technical specs that source each other in a cycle; a gap in `TODO.md` that matches no rule | whoever last wrote there: `metadata --write`, or fix the sources |
+| drift | a `.metadata.json` missing, orphan (no `spec.md` beside it), unreadable, or not matching its content; a duplicate rule title; a source a node may not list; a code node listing no technical spec; a perspective node a code node lists that none of its technical specs serves; a file under `src/` outside any node; technical specs that source each other in a cycle; a gap in `TODO.md` that matches no rule, or an audit gap naming no code node that owes an audit | whoever last wrote there: `metadata --write`, or fix the sources |
 | stale | a source's current hash differs from the recorded one; the rule delta names what was added, changed, removed, or renamed. On a code node, also: a perspective node its technical specs serve that it does not list yet | `/design` on a technical node, `/implement` on a code node |
 | dangling | a listed source is no node | same as stale |
 | unconsumed | a perspective node no technical node lists; a technical node no code node lists | `/design`; `/implement` |
 | waits | a code node whose technical spec, or one upstream of it, is stale or dangling; a unit whose every rule a `## Design gap` item parks | `/design` first |
 | fresh | none of the above; on a code node it means implemented and tested, because only a passed Implementation gate syncs it | — |
+
+**Audit**, orthogonal to the states: a code node is `fresh` and may still owe an audit. `audited` counts the approvals `/audit` recorded at the node's current `hash`: a judge read the code and confirmed that every technical spec the node lists governs it and that no technical spec it obeys is missing. It returns to 0 when `hash` moves and when a sync records a source listed since the last sync; an approval is recorded only on a node that has no drift and is no `/implement` unit, and the count then persists until one of those resets it. `pending` lists every code node at 0 under `# Audit` — owed to `/audit`; blocked while its content or metadata is not what it claims (a hash or rule map that does not match, an unreadable file, an invalid source); after `/implement` when the node is one of its units; or parked under `## Audit gap` of `TODO.md` because no technical spec governs the code yet. A node listing no technical spec, or a perspective none of its technical specs serves, is owed: the judge names the spec, and `/audit` drops the perspective. `pending --audit` prints the dossier a judge needs. Only 0 against ≥ 1 is read; the count is informational.
 
 **Writers:**
 
@@ -72,6 +77,7 @@ Sync between a spec and what consumes it is not written by hand. Every consumer 
 | `/spec` | `perspectives/**/spec.md` | `metadata --write <dir>` |
 | `/design` | `src/specs/<name>/spec.md` and the `sources[].path` of its node | `metadata --sync <dir>`, also to acknowledge a stale source that needs no change |
 | `/implement` | code and the `sources[].path` of its code nodes: a new node, a perspective node its technical specs came to serve, a dangling source dropped | `metadata --write` on a new node; `metadata --sync <dir>` only after the Implementation gate |
+| `/audit` | the `sources[].path` of a code node on a judge's verdict — a technical spec the code obeys added, one whose placement puts the code elsewhere dropped, and the perspective nodes that follow — and `## Audit gap` of `TODO.md` | `metadata --write <dir>` on a node it changed; `metadata --approve <dir>` on a node the judge approved as listed |
 | pre-commit hook | — | `metadata --staged`: refreshes and stages the metadata of every node holding a staged file, never a sync. It hashes the working tree, so a partially staged file is hashed as it is on disk |
 
-The hook is `.githooks/pre-commit`; enable it once per clone with `git config core.hooksPath .githooks`. It needs Go. A `.metadata.json` whose own hash moved travels in the commit of the content it hashes; a sync that changed only its recorded sources — an acknowledgement, a revalidation — is a commit of its own, type `docs`.
+The hook is `.githooks/pre-commit`; enable it once per clone with `git config core.hooksPath .githooks`. It needs Go. A `.metadata.json` whose own hash moved travels in the commit of the content it hashes; a sync that changed only its recorded sources — an acknowledgement, a revalidation — or an approval or sources edit of `/audit`, which never moves a hash, is a commit of its own, type `docs`.

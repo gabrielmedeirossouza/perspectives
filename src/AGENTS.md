@@ -13,7 +13,7 @@ src/
     spec.md
     .metadata.json                   # sources: the perspective specs it serves, the technical specs it depends on
   <code directory>/                  # a code node: any directory /implement declares
-    .metadata.json                   # sources: the technical specs its code obeys and the perspective specs they serve
+    .metadata.json                   # sources: the technical specs its code obeys and the perspective specs they serve; audited: approvals of /audit at its hash
   .metadata.json                     # iff src/ itself is the code node of the root manifests
 ```
 
@@ -80,7 +80,7 @@ On critical vs common, treat as critical. A suite that breaks on an internal ren
 
 **C5 One implementation.** The same documented obligation is not reimplemented in parallel. Copy vs coincidence: if the correct change to A requires the same change in B, it is copy — one owner, consumers call that module's public API. If A and B may diverge, leave them. Extract at the **second real consumer**, not in anticipation. A shared helper with one consumer is C7, not a C5 win.
 
-**C6 Sources.** Every directory `/implement` writes code into belongs to a code node whose `.metadata.json` lists every technical spec its code obeys directly and every perspective node those serve. `/implement` keeps that list: it adds a perspective node a technical spec came to serve (`pending`: missing source) and drops a source whose spec is gone (dangling). A code file under no node is a failure. The node is synced (`metadata --sync <dir>`) only when every rule its sources hold is 100% implemented, its required tests are green, and applicable validation is complete; until then it stays stale, and stale is the only pending mark. A removed rule is processed before new work on that node: delete exclusive orphan code, then sync.
+**C6 Sources.** Every directory `/implement` writes code into belongs to a code node whose `.metadata.json` lists at least one technical spec — every technical spec its code obeys directly — and every perspective node those serve. `/implement` keeps that list: it adds a perspective node a technical spec came to serve (`pending`: missing source) and drops a source whose spec is gone (dangling); when no technical spec remains, it deletes the node with its exclusive code or lists the technical spec that now governs it. A code file under no node is a failure. The node is synced (`metadata --sync <dir>`) only when every rule its sources hold is 100% implemented, its required tests are green, and applicable validation is complete; until then it stays stale, and stale is the only pending mark. A removed rule is processed before new work on that node: delete exclusive orphan code, then sync. Whether each listed spec governs the code is judged by `/audit`, not asserted here: every code write, and every sync that records a newly listed source, returns the node's `audited` to 0 (**Audit** in the root `AGENTS.md`).
 
 **C7 Economy.** The fewest files and indirections that satisfy the rule. Interface, port, layer, mapper, wrapper, or shared helper only with a pain trigger declared in the technical spec: second real implementation, an anti-corruption layer, or C5's second consumer. “Needed for tests” is not a trigger. Folder-by-technical-type inside a module (`domain/`, `use-cases/`, `dtos/`, `mappers/`) is a failure unless a technical rule obligates it.
 
@@ -94,7 +94,7 @@ On critical vs common, treat as critical. A suite that breaks on an internal ren
 2. **Implement** the whole rule body. Place it where the technical spec says (C3, C7). A new directory gets its `.metadata.json` — `{"version": 1, "sources": [...]}`, paths relative to the repository root — then `go run -C .agents/tools ./metadata --write <dir>`. Write no test in this step.
 3. **Sense:** diagnostics (as the root `AGENTS.md` defines them) before the first edit and after each executable edit. Distinguish pre-existing diagnostics from introduced ones. Fix introduced ones. If diagnostics are down, stop and report.
 4. **Test** once every rule in the run has code: band each rule (C2), write its public-surface suite, and run it green. If the test runner is down, stop and report.
-5. **Sync:** `go run -C .agents/tools ./metadata --sync <dir>` for each code node whose rules are 100% implemented with green tests. A node with anything left stays unsynced.
+5. **Sync:** `go run -C .agents/tools ./metadata --sync <dir>` for each code node whose rules are 100% implemented with green tests. A node with anything left stays unsynced. Every node whose code was written, or whose sync recorded a new source, now owes `/audit` (`pending` → `# Audit`).
 6. **Stop.** Do not edit spec files, `CONTEXT.md`, or any `.metadata.json` beyond `sources[].path` during implementation. In `TODO.md`, only park a design gap under `## Design gap`.
 
 | | Ask |
@@ -108,7 +108,7 @@ On critical vs common, treat as critical. A suite that breaks on an internal ren
 | C7 | Does every extra file or indirection have a declared trigger? |
 | C8 | Did I invent behavior or pick an open alternative? |
 
-Permissions for implementation: create, edit, and delete code and tests under `src/` outside `src/specs/`; write `sources[].path` of its code nodes' `.metadata.json`; run the metadata tool. `/design` owns `src/specs/`; `CONTEXT.md` and `TODO.md` follow the Writing gate of `perspectives/AGENTS.md`, except the `## Design gap` items implementation parks.
+Permissions for implementation: create, edit, and delete code and tests under `src/` outside `src/specs/`; write `sources[].path` of its code nodes' `.metadata.json`; run the metadata tool (never `--approve`, which is `/audit`'s). `/design` owns `src/specs/`; `CONTEXT.md` and `TODO.md` follow the Writing gate of `perspectives/AGENTS.md`, except the `## Design gap` items implementation parks.
 
 ## Bug autopsy
 
