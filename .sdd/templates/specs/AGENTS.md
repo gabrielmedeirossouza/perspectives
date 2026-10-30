@@ -18,13 +18,13 @@ CONTEXT.md                       # glossary: what domain terms are
 <perspective>/
   AGENTS.md                      # law of the perspective: feature boundary, scope, vocabulary
   spec.md                        # iff the perspective owns a global rule
-  .metadata.json                 # beside every spec.md, written by the metadata tool
+  spec.md.metadata.json          # beside every spec.md, written by the metadata tool
   <feature>/                     # ASCII kebab-case, no numeric prefix
     spec.md
-    .metadata.json
+    spec.md.metadata.json
 ```
 
-A feature directory holds **only** `spec.md` and its `.metadata.json`. There is no intermediate directory between the perspective and the feature. Omit a feature that has no rules. Do not leave empty files.
+A feature directory holds **only** `spec.md` and `spec.md.metadata.json`. There is no intermediate directory between the perspective and the feature. Omit a feature that has no rules. Do not leave empty files.
 
 The root of this tree owns no rule. Every rule classifies into one perspective by that perspective's scope test, so the highest owner a rule can reach is a perspective's `spec.md` — never this file.
 
@@ -111,7 +111,7 @@ Work this repository still owes, parked because the current session cannot close
 - **Rate limiting** (`src/api`) code obeys a limit no technical spec states.
 ```
 
-- One line per item, no checkbox: the work, the intended owner, and the blocker. The owner is `perspective/feature`, `perspective` for a global rule, `src/specs/<name>` for a technical spec, or the code node for an audit gap. A spec or design gap names the rule title verbatim in bold; an audit gap names what the missing technical spec would decide. Then the owner in backticks between parentheses, then the blocker; `pending` parses that shape.
+- One line per item, no checkbox: the work, the intended owner, and the blocker. The owner is `perspective/feature`, `perspective` for a global rule, `src/specs/<name>` for a technical spec, or, for an audit gap, a code node, a linked file — which parks the directory node that links it — or a directory, which parks every code node at or under it. A spec or design gap names the rule title verbatim in bold; an audit gap names what the missing technical spec would decide. Then the owner in backticks between parentheses, then the blocker; `pending` parses that shape.
 - English, matching spec language.
 - Group under `##` when clusters emerge; a flat list is fine for one subject.
 
@@ -221,7 +221,7 @@ Renaming a title updates every mention and `#anchor`. The technical specs that s
 
 ## Metadata
 
-Every `spec.md` here is a node of **Metadata** in the root `AGENTS.md`: a sibling `.metadata.json` carries its hash and the hash of each rule. Nothing here records what consumes it; the technical specs and code that do record this spec as a source, and `pending` names them when it changes.
+Every `spec.md` here is a node of **Metadata** in the root `AGENTS.md`: a sibling `spec.md.metadata.json` carries its hash and the hash of each rule. Nothing here records what consumes it; the technical specs and code that do record this spec as a source, and `pending` names them when it changes.
 
 A spec write ends with `go run -C .agents/tools ./metadata --write <dir>` for every directory written; the pre-commit hook refreshes what a session forgot. The file is never edited by hand.
 
@@ -266,4 +266,4 @@ Violation is a grave failure. Volume, age, or “already reviewed” does not ex
 | Glossary | Does the spec use the canonical name? Does every new or shifted term have an entry? |
 | TODO | Did this session park what it cannot close? Did unblocked items leave the file? |
 
-Permissions in each perspective: create, edit, and delete `<feature>/spec.md` with its directory, and the perspective's `spec.md`. A perspective is created, renamed, or removed as **Perspectives** says; the law of an existing perspective's `AGENTS.md` is not edited by a spec write. `.metadata.json` is written only through the tool. Edit `CONTEXT.md` (glossary only). Edit `TODO.md` (parked work only).
+Permissions in each perspective: create, edit, and delete `<feature>/spec.md` with its directory, and the perspective's `spec.md`. A perspective is created, renamed, or removed as **Perspectives** says; the law of an existing perspective's `AGENTS.md` is not edited by a spec write. `spec.md.metadata.json` is written only through the tool. Edit `CONTEXT.md` (glossary only). Edit `TODO.md` (parked work only).

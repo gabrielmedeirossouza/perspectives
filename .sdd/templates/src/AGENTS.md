@@ -11,13 +11,15 @@ src/
   INCREMENTAL-TESTING-GUIDELINES.md  # stateful record of testing practices
   specs/<name>/                      # one technical spec; <name> ASCII kebab-case
     spec.md
-    .metadata.json                   # sources: the perspective specs it serves, the technical specs it depends on
-  <code directory>/                  # a code node: any directory /sdd-implement declares
-    .metadata.json                   # sources: the technical specs its code obeys and the perspective specs they serve; audited: approvals of /sdd-audit at its hash
-  .metadata.json                     # iff src/ itself is the code node of the root manifests
+    spec.md.metadata.json            # sources: the perspective specs it serves, the technical specs it depends on
+  <dir>/                             # any directory a technical spec places code in
+    <file>                           # a code file: a node
+    <file>.metadata.json             # sources: the technical specs its code obeys and the perspective specs they serve; audited: approvals of /sdd-audit at its hash
+    .metadata.json                   # iff the directory holds files that are not code: files, each linked to the specs that govern it
+  .metadata.json                     # iff src/ itself holds the root manifests
 ```
 
-Where code goes is a technical rule, not a convention of this file: a technical spec states the placement, and `/sdd-implement` declares the directory as a node. A file under `src/` outside every node is drift. Files directly under `src/` ending in `.md` are chrome: no node's content, never drift. The root manifests and configuration of the code — `go.mod`, `package.json`, lockfiles, compiler settings — live where the global technical spec that decides them says; when that is `src/` itself, `/sdd-implement` declares `src/` a code node listing that spec.
+Where code goes is a technical rule, not a convention of this file: a technical spec states the placement, and `/sdd-implement` gives every code file it writes its `<file>.metadata.json` and links every other file it writes — a manifest, a lockfile, compiler or bundler settings, an asset, a fixture — in `files` of the `.metadata.json` of its directory; **Code** under **Metadata** in the root `AGENTS.md` says which is which. A file under `src/` in no node is drift. Files directly under `src/` ending in `.md` are chrome: no node's content, never drift. The root manifests and configuration of the code — `go.mod`, `package.json`, lockfiles, compiler settings — live where the global technical spec that decides them says; when that is `src/` itself, `/sdd-implement` declares `src/` a directory node linking each of them to that spec.
 
 ## Technical spec
 
@@ -54,7 +56,7 @@ A global technical spec may carry a `## Adopted patterns` heading: the system us
 
 ### Sources
 
-The `.metadata.json` of a technical spec lists as `sources[].path` the perspective nodes whose rules it serves and the technical nodes it depends on. A perspective node no technical spec lists is pending design; a technical spec whose source changed is stale until `/sdd-design` reviews it and syncs. The write ends with `go run -C .agents/tools ./metadata --sync src/specs/<name>`.
+The `spec.md.metadata.json` of a technical spec lists as `sources[].path` the perspective nodes whose rules it serves and the technical nodes it depends on, each by its `spec.md`. A perspective node no technical spec lists is pending design; a technical spec whose source changed is stale until `/sdd-design` reviews it and syncs. The write ends with `go run -C .agents/tools ./metadata --sync src/specs/<name>`.
 
 ## Implementation postulates
 
@@ -80,7 +82,7 @@ On critical vs common, treat as critical. A suite that breaks on an internal ren
 
 **C5 One implementation.** The same documented obligation is not reimplemented in parallel. Copy vs coincidence: if the correct change to A requires the same change in B, it is copy — one owner, consumers call that module's public API. If A and B may diverge, leave them. Extract at the **second real consumer**, not in anticipation. A shared helper with one consumer is C7, not a C5 win.
 
-**C6 Sources.** Every directory `/sdd-implement` writes code into belongs to a code node whose `.metadata.json` lists at least one technical spec — every technical spec its code obeys directly — and every perspective node those serve. `/sdd-implement` keeps that list: it adds a perspective node a technical spec came to serve (`pending`: missing source) and drops a source whose spec is gone (dangling); when no technical spec remains, it deletes the node with its exclusive code or lists the technical spec that now governs it. A code file under no node is a failure. The node is synced (`metadata --sync <dir>`) only when every rule its sources hold is 100% implemented, its required tests are green, and applicable validation is complete; until then it stays stale, and stale is the only pending mark. A removed rule is processed before new work on that node: delete exclusive orphan code, then sync. Whether each listed spec governs the code is judged by `/sdd-audit`, not asserted here: every code write, and every sync that records a newly listed source, returns the node's `audited` to 0 (**Audit** in the root `AGENTS.md`).
+**C6 Sources.** Every code file `/sdd-implement` writes is a node whose `<file>.metadata.json` lists at least one technical spec — every technical spec its code obeys directly — and every perspective node those serve; every other file it writes is linked, in `files` of the `.metadata.json` of its directory, to the specs that govern it. `/sdd-implement` keeps those lists: it adds a perspective node a technical spec came to serve (`pending`: missing source) and drops a source whose spec is gone (dangling); when no technical spec remains, it deletes the node with its exclusive code or lists the technical spec that now governs it. A file under no node is a failure. A node is synced (`metadata --sync <node>`) only when every rule its sources hold is 100% implemented, its required tests are green, and applicable validation is complete; until then it stays stale, and stale is the only pending mark. A removed rule is processed before new work on that node: delete exclusive orphan code, then sync. Whether each listed spec governs the code is judged by `/sdd-audit`, not asserted here: every code write, and every sync that records a newly listed source, returns the node's `audited` to 0 (**Audit** in the root `AGENTS.md`).
 
 **C7 Economy.** The fewest files and indirections that satisfy the rule. Interface, port, layer, mapper, wrapper, or shared helper only with a pain trigger declared in the technical spec: second real implementation, an anti-corruption layer, or C5's second consumer. “Needed for tests” is not a trigger. Folder-by-technical-type inside a module (`domain/`, `use-cases/`, `dtos/`, `mappers/`) is a failure unless a technical rule obligates it.
 
@@ -91,11 +93,11 @@ On critical vs common, treat as critical. A suite that breaks on an internal ren
 **Done when:** every targeted rule has code that holds C1–C8; each code node written lists its sources; diagnostics show no introduced blocking errors; the unit suite written after the run's code is green; each finished node is synced.
 
 1. **Reach** the root `AGENTS.md` (**Metadata**), this file, and `specs/AGENTS.md`. Read the technical spec, the perspective specs it serves, and `CONTEXT.md`. `pending` names the rules that changed and their state.
-2. **Implement** the whole rule body. Place it where the technical spec says (C3, C7). A new directory gets its `.metadata.json` — `{"version": 1, "sources": [...]}`, paths relative to the repository root — then `go run -C .agents/tools ./metadata --write <dir>`. Write no test in this step.
+2. **Implement** the whole rule body. Place it where the technical spec says (C3, C7). Every code file written gets its `<file>.metadata.json` — `{"version": 2, "sources": [...]}`, spec files by path relative to the repository root — and every other file written is linked in the `.metadata.json` of its directory — `{"version": 2, "sources": [...], "files": {"<file>": ["<spec>"]}}`; then `go run -C .agents/tools ./metadata --write <dir>`. Write no test in this step.
 3. **Sense:** diagnostics (as the root `AGENTS.md` defines them) before the first edit and after each executable edit. Distinguish pre-existing diagnostics from introduced ones. Fix introduced ones. If diagnostics are down, stop and report.
 4. **Test** once every rule in the run has code: band each rule (C2), write its public-surface suite, and run it green. If the test runner is down, stop and report.
-5. **Sync:** `go run -C .agents/tools ./metadata --sync <dir>` for each code node whose rules are 100% implemented with green tests. A node with anything left stays unsynced. Every node whose code was written, or whose sync recorded a new source, now owes `/sdd-audit` (`pending` → `# Audit`).
-6. **Stop.** Do not edit spec files, `CONTEXT.md`, or any `.metadata.json` beyond `sources[].path` during implementation. In `TODO.md`, only park a design gap under `## Design gap`.
+5. **Sync:** `go run -C .agents/tools ./metadata --sync <node…>` for each code node whose rules are 100% implemented with green tests — one node per target: a file path, or `<dir>/.metadata.json` for a directory node. A node with anything left stays unsynced. Every node whose code was written, or whose sync recorded a new source, now owes `/sdd-audit` (`pending` → `# Audit`).
+6. **Stop.** Do not edit spec files, `CONTEXT.md`, or any metadata beyond `sources[].path` and `files` during implementation. In `TODO.md`, only park a design gap under `## Design gap`.
 
 | | Ask |
 |--|------|
@@ -108,7 +110,7 @@ On critical vs common, treat as critical. A suite that breaks on an internal ren
 | C7 | Does every extra file or indirection have a declared trigger? |
 | C8 | Did I invent behavior or pick an open alternative? |
 
-Permissions for implementation: create, edit, and delete code and tests under `src/` outside `src/specs/`; write `sources[].path` of its code nodes' `.metadata.json`; run the metadata tool (never `--approve`, which is `/sdd-audit`'s). `/sdd-design` owns `src/specs/`; `CONTEXT.md` and `TODO.md` follow the Writing gate of `specs/AGENTS.md`, except the `## Design gap` items implementation parks.
+Permissions for implementation: create, edit, and delete code and tests under `src/` outside `src/specs/`; write `sources[].path` and `files` of its code nodes' metadata; run the metadata tool (never `--approve`, which is `/sdd-audit`'s). `/sdd-design` owns `src/specs/`; `CONTEXT.md` and `TODO.md` follow the Writing gate of `specs/AGENTS.md`, except the `## Design gap` items implementation parks.
 
 ## Bug autopsy
 
