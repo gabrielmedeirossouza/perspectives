@@ -3,7 +3,7 @@
   "algorithm": "sha256",
   "hash": "3b20f69cb9319e0fe2e46870fb13f450c1afbdabdae97f2e9811f12d2801cdef",
   "modified": "2026-10-30T21:17:24Z",
-  "audited": 0,
+  "audited": 1,
   "sources": [
     {
       "path": "src/specs/toolchain/spec.md",
