@@ -208,6 +208,63 @@ func TestRenameAndRemove(t *testing.T) {
 	}
 }
 
+func TestLinkToARemovedOrRenamedTitleIsDrift(t *testing.T) {
+	root := fixture(t)
+	iSpec := "# Invite\n\nPurpose.\n\n## HTTP\n\n### Invite endpoint\n\n`POST /invites` **must** create one. Serves [Invite expiry](../../../specs/business/invite/spec.md#invite-expiry) and [Single use](../../../" + P + "#single-use); see [HTTP](#http), [the guide](https://example.com/x#y), and `[code](gone.md)`.\n"
+	write(t, root, I, iSpec)
+	g := settle(t, root)
+	if d := g.Drift(); len(d) > 0 {
+		t.Fatalf("drift with every link resolving = %v", d)
+	}
+	write(t, root, P, strings.Replace(pSpec, "### Single use", "### One use", 1))
+	g = sync(t, root, P)
+	if d := g.NodeDrift(g.Node(I)); len(d) != 1 || !has(d, "`"+I+"` links `../../../"+P+"#single-use`, but `"+P+"` has no heading `#single-use`") || !has(d, "(/sdd-design)") {
+		t.Fatalf("drift of %s after a rename = %v", I, d)
+	}
+	if _, err := g.Sync(g.Node(I), time.Now()); err == nil || !strings.Contains(err.Error(), "has no heading `#single-use`") {
+		t.Fatalf("sync of %s with a broken link of its own = %v", I, err)
+	}
+	write(t, root, P, "# Invite\n\nPurpose.\n\nSee [the toolchain](../../../src/specs/missing/spec.md), [up](../../../../x.md), [case](../../../SRC/specs/toolchain/spec.md), [root](/src/specs/toolchain/spec.md?plain=1#toolchain), and [tests](/"+T+"#tests).\n")
+	g = load(t, root)
+	if _, err := g.Sync(g.Node(P), time.Now()); err == nil {
+		t.Fatalf("sync of %s with broken links of its own went through", P)
+	}
+	if m, err := Refresh(g.Node(P), time.Now()); err != nil {
+		t.Fatal(err)
+	} else if _, err := Save(g.Node(P), m); err != nil {
+		t.Fatal(err)
+	}
+	g = load(t, root)
+	d := g.NodeDrift(g.Node(P))
+	if len(d) != 3 || !has(d, "`src/specs/missing/spec.md` does not exist; fix the link (/sdd-spec)") || !has(d, "leaves the repository") || !has(d, "`SRC/specs/toolchain/spec.md` does not exist") {
+		t.Fatalf("drift of %s = %v", P, d)
+	}
+	if _, err := g.Sync(g.Node(I), time.Now()); err == nil || strings.Contains(err.Error(), "`"+P+"` has drift") {
+		t.Fatalf("sync of %s: refused for its own link only, not for the drift of %s: %v", I, P, err)
+	}
+}
+
+func TestBrokenLinkOfASourceRefusesNoSyncOfItsConsumer(t *testing.T) {
+	root := fixture(t)
+	settle(t, root)
+	write(t, root, I, "# Invite\n\nPurpose.\n\n## HTTP\n\n### Invite endpoint\n\n`POST /invites` **must** create one. Serves [Invite expiry](../../../"+P+"#gone).\n")
+	g := load(t, root)
+	m, err := Refresh(g.Node(I), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Save(g.Node(I), m); err != nil {
+		t.Fatal(err)
+	}
+	g = load(t, root)
+	if !has(g.NodeDrift(g.Node(I)), "has no heading `#gone`") {
+		t.Fatalf("drift of %s = %v", I, g.NodeDrift(g.Node(I)))
+	}
+	if _, err := g.Sync(g.Node(C), time.Now()); err != nil {
+		t.Fatalf("sync of %s refused for a broken link of its source: %v", C, err)
+	}
+}
+
 func TestDanglingSource(t *testing.T) {
 	root := fixture(t)
 	settle(t, root)
@@ -326,6 +383,15 @@ func TestInvalidEdgesStraysOrphansAndUncovered(t *testing.T) {
 		if !has(d, want) {
 			t.Errorf("drift lacks %q:\n%s", want, strings.Join(d, "\n"))
 		}
+	}
+	if all := g.Loose(nil); len(all) != 8 || !has(all, "`src/loose/y.ts` is in no node") || !has(all, "`specs/business/c/.metadata.json` is no node") {
+		t.Errorf("Loose(nil) = %v", all)
+	}
+	if scoped := g.Loose([]string{"src/loose", "src/code"}); len(scoped) != 2 || !has(scoped, "`src/loose/y.ts`") || !has(scoped, "`src/code/z.ts.metadata.json.metadata.json`") {
+		t.Errorf("Loose(src/loose, src/code) = %v", scoped)
+	}
+	if none := g.Loose([]string{"src/lo"}); len(none) != 0 {
+		t.Errorf("Loose(src/lo) matched a sibling by prefix: %v", none)
 	}
 	if has(d, "README") || has(d, "`src/AGENTS.md` is in no node") || has(d, "`specs/spec.md` is in no node") {
 		t.Errorf("chrome reported: %v", d)

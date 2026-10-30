@@ -7,7 +7,8 @@ description: >-
   (stack, HTTP, persistence, placement, contracts) for /sdd-design. Use when
   adding, changing, or removing any product rule, including a request that
   mixes product and technical items, when turning a brainstorm from
-  .sdd/brainstorming/ into specs, or when the user types /sdd-spec.
+  .sdd/brainstorming/ into specs, when pending names drift for /sdd-spec, or
+  when the user types /sdd-spec.
 ---
 
 # sdd-spec
@@ -32,7 +33,7 @@ $ARGUMENTS
 
 Examples: `/sdd-spec add invite expiry`; `/sdd-spec member/home:empty list state`; `/sdd-spec operator/release:who may promote to production`; `/sdd-spec remove invite-by-link`; `/sdd-spec brainstorming`; `/sdd-spec brainstorming:invite-expiry`.
 
-The argument is a **request**. Path and slug are optional; locate files under `specs/` from the text. **No argument = stop.** Do not infer the target from a prior session or a git branch.
+The argument is a **request**. Path and slug are optional; locate files under `specs/` from the text. **No argument = stop**, after listing the `# Drift` lines of `go run -C .agents/tools ./pending` that name `(/sdd-spec)`. Do not infer the target from a prior session or a git branch.
 
 ### Brainstorm source
 
@@ -51,7 +52,7 @@ Decisions recorded in the brainstorm are the user's: the interview does not ask 
 5. **Order** the items: dependencies first — a rule another cites by title comes before the citing one.
 6. **Interview** until shared understanding. One question at a time, in the order of step 5, with a recommendation. Walk every branch; if an answer opens a new one, follow it. Check drafts against the postulates **before** proposing a write.
 7. **Confirm:** "Shall I apply these changes?" Only then the Writing gate.
-8. **Write** through the Writing gate, metadata refresh included. Park what this request cannot close; delete what this session unblocked. Once every agreed item has passed the gate, delete the source brainstorm. Declined at **Confirm** or stopped before → the brainstorm stays.
+8. **Write** through the Writing gate, metadata refresh included. A title or file removed, renamed, or moved takes every markdown link to it under `specs/` along, and a citation of a removed rule revisits the rule that cites it; the links under `src/specs/` are `/sdd-design`'s, and `pending` names them as drift. Park what this request cannot close; delete what this session unblocked. Once every agreed item has passed the gate, delete the source brainstorm. Declined at **Confirm** or stopped before → the brainstorm stays.
 9. **Report** by owner: what was written, where, what was parked, and the technical items handed to `/sdd-design` with the product rules they serve. Name the deleted brainstorm. When `.sdd/prototypes/<name>.md` exists, say the prototype is still alive and is removed with `/sdd-prototype --discard <name>`; do not discard it.
 
 ## Scope

@@ -43,8 +43,10 @@
 //	              duplicate titles, cycles, gaps in TODO.md that match no rule
 //	              or node
 //
-// With nothing pending it prints "No pending work." and the drift. Exit 0
-// with the answer; non-zero with the reason on stderr.
+// With no # Design and no # Implement it prints "Nothing stale, dangling, or
+// unconsumed." before the audit and the drift, and "No pending work." when
+// those are empty too. Exit 0 with the answer; non-zero with the reason on
+// stderr.
 //
 // It implements **Continue** of .agents/skills/sdd-implement/SKILL.md and
 // **Inventory** of .agents/skills/sdd-audit/SKILL.md over the states of
@@ -157,8 +159,16 @@ func render(g *graph.Graph, batchOnly bool) string {
 	design := g.Design()
 	units := g.Units()
 	drift := g.Drift()
+	var audit []string
+	if !batchOnly {
+		audit = auditLines(g.Audits())
+	}
 	if len(design) == 0 && len(units) == 0 {
-		out = append(out, "No pending work.")
+		if len(audit) == 0 && len(drift) == 0 {
+			out = append(out, "No pending work.")
+		} else {
+			out = append(out, "Nothing stale, dangling, or unconsumed.")
+		}
 	}
 	if !batchOnly {
 		if len(design) > 0 {
@@ -198,14 +208,12 @@ func render(g *graph.Graph, batchOnly bool) string {
 		}
 		out = append(out, "")
 	}
-	if !batchOnly {
-		if audit := auditLines(g.Audits()); len(audit) > 0 {
-			out = append(out, "# Audit", "")
-			for _, line := range audit {
-				out = append(out, "- "+line)
-			}
-			out = append(out, "")
+	if len(audit) > 0 {
+		out = append(out, "# Audit", "")
+		for _, line := range audit {
+			out = append(out, "- "+line)
 		}
+		out = append(out, "")
 	}
 	if len(drift) > 0 {
 		out = append(out, "# Drift", "")

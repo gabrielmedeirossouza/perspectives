@@ -9,14 +9,17 @@ package graph
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
 	"tools/internal/config"
+	"tools/internal/md"
 	"tools/internal/meta"
 )
 
@@ -80,6 +83,8 @@ type Node struct {
 	Sources  []*Edge // one per Meta.Sources entry, in order
 	content  []string
 	linkErrs []finding // what is wrong with files of a directory node
+	refErrs  []string  // links of a spec that name no file or no heading
+	text     string    // the spec file, read for its rules and links
 }
 
 // Files lists the node's content, names relative to its directory, sorted:
@@ -149,8 +154,8 @@ type Graph struct {
 	topo      []*Node         // technical nodes with metadata, sources first
 	pos       map[*Node]int
 	cycle     []string
-	strays    []string // metadata files that are no node, with the fix
-	uncovered []string // files in no node, with the fix
+	strays    []loose // metadata files that are no node, with the fix
+	uncovered []loose // files in no node, with the fix
 	gaps      []Gap
 	gapDrift  []string
 }
@@ -201,17 +206,17 @@ func Load(root string) (*Graph, error) {
 			if k, ok := g.kindOf(dir); ok && k == Code {
 				node(dir, true).HasMeta = true
 			} else {
-				g.strays = append(g.strays, fmt.Sprintf("`%s` is no node: the node of a spec is %s.%s", f, meta.SpecFile, strings.TrimPrefix(meta.Suffix, ".")))
+				g.strays = append(g.strays, loose{f, fmt.Sprintf("`%s` is no node: the node of a spec is %s.%s", f, meta.SpecFile, strings.TrimPrefix(meta.Suffix, "."))})
 			}
 		case strings.HasSuffix(base, meta.Suffix):
 			rel := strings.TrimSuffix(f, meta.Suffix)
 			switch {
 			case strings.HasSuffix(rel, meta.Suffix):
-				g.strays = append(g.strays, fmt.Sprintf("`%s` is no node: a metadata file has no metadata; delete it", f))
+				g.strays = append(g.strays, loose{f, fmt.Sprintf("`%s` is no node: a metadata file has no metadata; delete it", f)})
 			case g.isChrome(rel):
-				g.strays = append(g.strays, fmt.Sprintf("`%s` is no node: `%s` is chrome; delete it", f, rel))
+				g.strays = append(g.strays, loose{f, fmt.Sprintf("`%s` is no node: `%s` is chrome; delete it", f, rel)})
 			case dirs[rel]:
-				g.strays = append(g.strays, fmt.Sprintf("`%s` is no node: `%s` is a directory, whose metadata is `%s/%s`; delete it", f, rel, rel, meta.FileName))
+				g.strays = append(g.strays, loose{f, fmt.Sprintf("`%s` is no node: `%s` is a directory, whose metadata is `%s/%s`; delete it", f, rel, rel, meta.FileName)})
 			default:
 				if n := node(rel, false); n != nil {
 					n.HasMeta = true
@@ -245,7 +250,7 @@ func Load(root string) (*Graph, error) {
 		if d := g.byRel[path.Dir(f)]; d != nil && d.IsDir && d.links(base) {
 			continue // content of the directory node, taken from files
 		}
-		g.uncovered = append(g.uncovered, g.uncoveredFix(f))
+		g.uncovered = append(g.uncovered, loose{f, g.uncoveredFix(f)})
 	}
 	for _, n := range g.Nodes {
 		if n.Hash, err = meta.HashFiles(n.Dir, n.content); err != nil {
@@ -256,7 +261,15 @@ func Load(root string) (*Graph, error) {
 			if err != nil {
 				return nil, err
 			}
-			n.Rules, n.Order, n.RuleErr = meta.RuleHashes(string(text))
+			n.text = string(text)
+			n.Rules, n.Order, n.RuleErr = meta.RuleHashes(n.text)
+		}
+	}
+	anchors, listings := map[string]map[string]bool{}, map[string]map[string]bool{}
+	for _, n := range g.Nodes {
+		if n.text != "" {
+			n.refErrs = g.brokenLinks(n, anchors, listings)
+			n.text = ""
 		}
 	}
 	for _, n := range g.Nodes {
@@ -275,6 +288,93 @@ func Load(root string) (*Graph, error) {
 	g.gaps, g.gapDrift = loadGaps(root, g.Paths)
 	return g, nil
 }
+
+// brokenLinks lists the links of a spec that name nothing in the repository,
+// or a heading the markdown file they name does not hold, its slug computed
+// as Anchors of specs/AGENTS.md says. A path is resolved against the spec's
+// directory, or against the repository root when it starts with `/`; a query
+// is ignored; every segment must match a name on disk exactly, case included,
+// as on a case-sensitive host. A link with a scheme is not followed. anchors
+// caches the slugs of each file read, listings the names of each directory.
+func (g *Graph) brokenLinks(n *Node, anchors, listings map[string]map[string]bool) []string {
+	owner := "/sdd-spec"
+	if n.Kind == Technical {
+		owner = "/sdd-design"
+	}
+	var out []string
+	for _, link := range md.Links(n.text) {
+		if schemeRe.MatchString(link) || strings.HasPrefix(link, "//") {
+			continue
+		}
+		target, frag, _ := strings.Cut(link, "#")
+		target, _, _ = strings.Cut(target, "?")
+		if t, err := url.PathUnescape(target); err == nil {
+			target = t
+		}
+		if f, err := url.PathUnescape(frag); err == nil {
+			frag = f
+		}
+		rel := n.Rel
+		switch {
+		case strings.HasPrefix(target, "/"):
+			rel = path.Clean(strings.TrimLeft(target, "/"))
+		case target != "":
+			rel = path.Clean(path.Join(path.Dir(n.Rel), target))
+		}
+		if rel == ".." || strings.HasPrefix(rel, "../") {
+			out = append(out, fmt.Sprintf("`%s` links `%s`, which leaves the repository; fix the link (%s)", n.Rel, link, owner))
+			continue
+		}
+		if !g.exists(rel, listings) {
+			out = append(out, fmt.Sprintf("`%s` links `%s`, but `%s` does not exist; fix the link (%s)", n.Rel, link, rel, owner))
+			continue
+		}
+		if frag == "" || !strings.HasSuffix(rel, ".md") {
+			continue
+		}
+		slugs, ok := anchors[rel]
+		if !ok {
+			slugs = map[string]bool{}
+			if text, err := os.ReadFile(filepath.Join(g.Root, filepath.FromSlash(rel))); err == nil {
+				for _, s := range md.Anchors(string(text)) {
+					slugs[s] = true
+				}
+			}
+			anchors[rel] = slugs
+		}
+		if !slugs[strings.ToLower(frag)] {
+			out = append(out, fmt.Sprintf("`%s` links `%s`, but `%s` has no heading `#%s`: a removed or renamed title; fix the link (%s)", n.Rel, link, rel, frag, owner))
+		}
+	}
+	return out
+}
+
+// exists reports whether a root-relative path names a file or directory whose
+// every segment matches a name on disk exactly.
+func (g *Graph) exists(rel string, listings map[string]map[string]bool) bool {
+	if rel == "." {
+		return true
+	}
+	dir := "."
+	for _, seg := range strings.Split(rel, "/") {
+		names, ok := listings[dir]
+		if !ok {
+			names = map[string]bool{}
+			entries, _ := os.ReadDir(filepath.Join(g.Root, filepath.FromSlash(dir)))
+			for _, e := range entries {
+				names[e.Name()] = true
+			}
+			listings[dir] = names
+		}
+		if !names[seg] {
+			return false
+		}
+		dir = path.Join(dir, seg)
+	}
+	return true
+}
+
+var schemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
 
 // loadLinks reads files of a directory node: each key is the name of a
 // tracked or trackable file directly in the directory that is neither chrome,
@@ -505,6 +605,29 @@ func (g *Graph) order() {
 // Node returns the node at a root-relative path, or nil.
 func (g *Graph) Node(rel string) *Node { return g.byRel[rel] }
 
+// loose is a file under the roots that belongs to no node, with its fix.
+type loose struct{ file, msg string }
+
+// Loose lists the metadata files that are no node, then the files in no
+// node, each with its fix: every one when under is empty, else those at or
+// under one of the root-relative paths of under.
+func (g *Graph) Loose(under []string) []string {
+	var out []string
+	for _, l := range append(append([]loose(nil), g.strays...), g.uncovered...) {
+		if len(under) == 0 {
+			out = append(out, l.msg)
+			continue
+		}
+		for _, u := range under {
+			if l.file == u || strings.HasPrefix(l.file, u+"/") {
+				out = append(out, l.msg)
+				break
+			}
+		}
+	}
+	return out
+}
+
 // NodesUnder lists the nodes at or under a root-relative path, by path: the
 // directory node of that directory, when it has one, and every node below.
 func (g *Graph) NodesUnder(rel string) []*Node {
@@ -605,7 +728,8 @@ type finding struct {
 
 // NodeDrift lists what is wrong with n's own metadata: missing, orphan,
 // unreadable, not matching the content, a spec node that is not spec.md, a
-// duplicate title, a bad link of a directory node, a source the node may not
+// duplicate title, a link of a spec that names no file or no heading, a bad
+// link of a directory node, a source the node may not
 // list, a code node that lists no technical spec, or a perspective node the
 // code node lists that none of its technical specs serves.
 func (g *Graph) NodeDrift(n *Node) []string {
@@ -644,6 +768,9 @@ func (g *Graph) findings(n *Node) []finding {
 		block(fmt.Sprintf("`%s` carries files, which only a directory node has", n.MetaRel))
 	}
 	d = append(d, n.linkErrs...)
+	for _, msg := range n.refErrs {
+		warn(msg)
+	}
 	for _, e := range n.Sources {
 		switch {
 		case e.To == nil:
@@ -707,6 +834,18 @@ func malformed(n *Node) string {
 	return ""
 }
 
+// blocking lists the drift of n that makes its content or metadata not what
+// it claims.
+func (g *Graph) blocking(n *Node) []string {
+	var out []string
+	for _, f := range g.findings(n) {
+		if f.blocking {
+			out = append(out, f.msg)
+		}
+	}
+	return out
+}
+
 // HasDrift reports whether NodeDrift finds anything.
 func (g *Graph) HasDrift(n *Node) bool { return len(g.NodeDrift(n)) > 0 }
 
@@ -719,8 +858,7 @@ func (g *Graph) Drift() []string {
 	for _, n := range g.Nodes {
 		d = append(d, g.NodeDrift(n)...)
 	}
-	d = append(d, g.strays...)
-	d = append(d, g.uncovered...)
+	d = append(d, g.Loose(nil)...)
 	if len(g.cycle) > 0 {
 		d = append(d, "technical specs source each other in a cycle: `"+strings.Join(g.cycle, "`, `")+"`")
 	}

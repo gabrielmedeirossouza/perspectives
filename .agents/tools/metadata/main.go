@@ -12,7 +12,9 @@
 //	              node, when it has one, and every node at or under it.
 //	              --sync and --approve take one node per target and refuse a
 //	              directory that names several
-//	(no flag)     check: list every drift of the targeted nodes; fail if any
+//	(no flag)     check: list every drift of the targeted nodes, then the
+//	              files at or under the targets that belong to no node — a
+//	              file in no node, a metadata file that is no node; fail if any
 //	--write       recompute hash and rules; move modified only when the hash
 //	              changed; on a code node, return audited to 0 when the hash
 //	              changed; create spec.md.metadata.json for a spec.md of the
@@ -82,14 +84,19 @@ func main() {
 	case len(opts.dirs) == 0:
 		targets = g.Nodes
 	default:
-		targets, err = resolve(g, root, opts.dirs, opts.sync || opts.approve)
+		targets, err = resolve(g, root, opts.dirs, opts.sync || opts.approve, !opts.write && !opts.sync && !opts.approve)
 	}
 	check(err)
 	for _, line := range uncovered {
 		fmt.Fprintf(os.Stderr, "metadata: %s\n", line)
 	}
 	targets = g.SourcesFirst(targets)
-	if len(targets) == 0 && !opts.staged {
+	checking := !opts.write && !opts.sync && !opts.approve && !opts.staged
+	var loose []string
+	if checking {
+		loose = g.Loose(scope(root, opts.dirs))
+	}
+	if len(targets) == 0 && len(loose) == 0 && !opts.staged {
 		fmt.Printf("no node under %s/ or %s/\n", g.Paths.Specs, g.Paths.Src)
 		return
 	}
@@ -144,6 +151,10 @@ func main() {
 				fmt.Println("ok " + n.MetaRel)
 			}
 		}
+	}
+	for _, line := range loose {
+		fmt.Println(line)
+		failed = true
 	}
 	if len(stage) > 0 {
 		args := append([]string{"-C", root, "add", "--"}, stage...)
@@ -202,7 +213,7 @@ func parse(args []string) options {
 // node path or its metadata file names one node; a directory names its
 // directory node and every node at or under it — refused when single is
 // set and the directory names more than one.
-func resolve(g *graph.Graph, root string, targets []string, single bool) ([]*graph.Node, error) {
+func resolve(g *graph.Graph, root string, targets []string, single, checking bool) ([]*graph.Node, error) {
 	var out []*graph.Node
 	seen := map[*graph.Node]bool{}
 	add := func(nodes ...*graph.Node) {
@@ -237,6 +248,9 @@ func resolve(g *graph.Graph, root string, targets []string, single bool) ([]*gra
 				nodes = g.NodesUnder(rel)
 			}
 		}
+		if len(nodes) == 0 && checking && len(g.Loose([]string{rel})) > 0 {
+			continue // the check lists its files in no node
+		}
 		if len(nodes) == 0 {
 			return nil, fmt.Errorf("`%s` is no node: a node is a file with <file>%s beside it, or a directory under %s/ whose %s links its files; a directory names every node at or under it", rel, meta.Suffix, g.Paths.Src, meta.FileName)
 		}
@@ -246,6 +260,19 @@ func resolve(g *graph.Graph, root string, targets []string, single bool) ([]*gra
 		add(nodes...)
 	}
 	return out, nil
+}
+
+// scope maps the targets to the root-relative paths whose loose files a check
+// reports; none means every one.
+func scope(root string, targets []string) []string {
+	var out []string
+	for _, d := range targets {
+		if filepath.IsAbs(d) {
+			d = repo.Rel(root, d)
+		}
+		out = append(out, repo.Clean(d))
+	}
+	return out
 }
 
 func report(written bool, verb, file string) {
