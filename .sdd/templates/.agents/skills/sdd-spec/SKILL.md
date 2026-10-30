@@ -51,7 +51,7 @@ Decisions recorded in the brainstorm are the user's: the interview does not ask 
 5. **Order** the items: dependencies first — a rule another cites by title comes before the citing one.
 6. **Interview** until shared understanding. One question at a time, in the order of step 5, with a recommendation. Walk every branch; if an answer opens a new one, follow it. Check drafts against the postulates **before** proposing a write.
 7. **Confirm:** "Shall I apply these changes?" Only then the Writing gate.
-8. **Write** through the Writing gate, metadata refresh included. Park what this request cannot close; delete what this session unblocked. Once every agreed item has passed the gate, delete the source brainstorm. Declined at **Confirm** or stopped before → the brainstorm stays.
+8. **Write** through the Writing gate, metadata refresh included. A title removed or renamed takes every link to it under `specs/` along; the links under `src/specs/` are `/sdd-design`'s, and `pending` names them as drift. Park what this request cannot close; delete what this session unblocked. Once every agreed item has passed the gate, delete the source brainstorm. Declined at **Confirm** or stopped before → the brainstorm stays.
 9. **Report** by owner: what was written, where, what was parked, and the technical items handed to `/sdd-design` with the product rules they serve. Name the deleted brainstorm. When `.sdd/prototypes/<name>.md` exists, say the prototype is still alive and is removed with `/sdd-prototype --discard <name>`; do not discard it.
 
 ## Scope

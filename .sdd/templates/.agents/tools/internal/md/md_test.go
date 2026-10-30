@@ -59,3 +59,29 @@ func TestFenceIndentationFollowsCommonMark(t *testing.T) {
 		t.Fatalf("titles = %v", titles)
 	}
 }
+
+func TestLinksSkipFencesAndCodeSpans(t *testing.T) {
+	text := "Serves [A](../a/spec.md#rule-a) and [B](b.md \"title\").\n" +
+		"`[not](code.md)` ![img](pic.png)\n" +
+		"```\n[fenced](f.md)\n```\n" +
+		"[web](https://example.com) [self](#own)\n"
+	want := []string{"../a/spec.md#rule-a", "b.md", "pic.png", "https://example.com", "#own"}
+	if got := Links(text); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Links = %v, want %v", got, want)
+	}
+}
+
+func TestSlugFollowsAnchors(t *testing.T) {
+	for title, want := range map[string]string{
+		"Invalid credentials with generic message": "invalid-credentials-with-generic-message",
+		"Multi-tab session — product rules":        "multi-tab-session--product-rules",
+		"Sessão expirada":                          "sessão-expirada",
+		"SQLite through node:sqlite":               "sqlite-through-nodesqlite",
+		"Node.js 26 and `TypeScript` 5":            "nodejs-26-and-typescript-5",
+		"snake_case codes":                         "snake_case-codes",
+	} {
+		if got := Slug(title); got != want {
+			t.Errorf("Slug(%q) = %q, want %q", title, got, want)
+		}
+	}
+}

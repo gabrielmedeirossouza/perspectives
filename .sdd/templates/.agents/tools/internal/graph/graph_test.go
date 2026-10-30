@@ -208,6 +208,30 @@ func TestRenameAndRemove(t *testing.T) {
 	}
 }
 
+func TestLinkToARemovedOrRenamedTitleIsDrift(t *testing.T) {
+	root := fixture(t)
+	iSpec := "# Invite\n\nPurpose.\n\n## HTTP\n\n### Invite endpoint\n\n`POST /invites` **must** create one. Serves [Invite expiry](../../../specs/business/invite/spec.md#invite-expiry) and [Single use](../../../" + P + "#single-use); see [HTTP](#http), [the guide](https://example.com/x#y), and `[code](gone.md)`.\n"
+	write(t, root, I, iSpec)
+	g := settle(t, root)
+	if d := g.Drift(); len(d) > 0 {
+		t.Fatalf("drift with every link resolving = %v", d)
+	}
+	write(t, root, P, strings.Replace(pSpec, "### Single use", "### One use", 1))
+	g = load(t, root)
+	if d := g.NodeDrift(g.Node(I)); len(d) != 1 || !has(d, "`"+I+"` links `../../../"+P+"#single-use`, but `"+P+"` has no heading `#single-use`") || !has(d, "(/sdd-design)") {
+		t.Fatalf("drift of %s after a rename = %v", I, d)
+	}
+	if _, err := g.Sync(g.Node(C), time.Now()); err == nil || !strings.Contains(err.Error(), "`"+I+"` has drift") {
+		t.Fatalf("sync of %s past a broken link = %v", C, err)
+	}
+	write(t, root, P, "# Invite\n\nPurpose.\n\nSee [the toolchain](../../../src/specs/missing/spec.md) and [up](../../../../x.md).\n")
+	g = load(t, root)
+	d := g.NodeDrift(g.Node(P))
+	if !has(d, "`src/specs/missing/spec.md` does not exist; fix the link (/sdd-spec)") || !has(d, "leaves the repository") {
+		t.Fatalf("drift of %s = %v", P, d)
+	}
+}
+
 func TestDanglingSource(t *testing.T) {
 	root := fixture(t)
 	settle(t, root)

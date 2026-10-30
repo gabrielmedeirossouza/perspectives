@@ -9,14 +9,17 @@ package graph
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
 	"tools/internal/config"
+	"tools/internal/md"
 	"tools/internal/meta"
 )
 
@@ -80,6 +83,8 @@ type Node struct {
 	Sources  []*Edge // one per Meta.Sources entry, in order
 	content  []string
 	linkErrs []finding // what is wrong with files of a directory node
+	refErrs  []string  // links of a spec that name no file or no heading
+	text     string    // the spec file, read for its rules and links
 }
 
 // Files lists the node's content, names relative to its directory, sorted:
@@ -256,7 +261,15 @@ func Load(root string) (*Graph, error) {
 			if err != nil {
 				return nil, err
 			}
-			n.Rules, n.Order, n.RuleErr = meta.RuleHashes(string(text))
+			n.text = string(text)
+			n.Rules, n.Order, n.RuleErr = meta.RuleHashes(n.text)
+		}
+	}
+	anchors := map[string]map[string]bool{}
+	for _, n := range g.Nodes {
+		if n.text != "" {
+			n.refErrs = g.brokenLinks(n, anchors)
+			n.text = ""
 		}
 	}
 	for _, n := range g.Nodes {
@@ -275,6 +288,62 @@ func Load(root string) (*Graph, error) {
 	g.gaps, g.gapDrift = loadGaps(root, g.Paths)
 	return g, nil
 }
+
+// brokenLinks lists the relative links of a spec that name no file, or a
+// heading of level 1–3 that the markdown file they name does not hold, its
+// slug computed as Anchors of specs/AGENTS.md says. A link with a scheme is
+// not followed. anchors caches the slugs of each file read.
+func (g *Graph) brokenLinks(n *Node, anchors map[string]map[string]bool) []string {
+	owner := "/sdd-spec"
+	if n.Kind == Technical {
+		owner = "/sdd-design"
+	}
+	var out []string
+	for _, link := range md.Links(n.text) {
+		if schemeRe.MatchString(link) || strings.HasPrefix(link, "//") {
+			continue
+		}
+		target, frag, _ := strings.Cut(link, "#")
+		if t, err := url.PathUnescape(target); err == nil {
+			target = t
+		}
+		if f, err := url.PathUnescape(frag); err == nil {
+			frag = f
+		}
+		rel := n.Rel
+		if target != "" {
+			rel = path.Clean(path.Join(path.Dir(n.Rel), target))
+		}
+		abs := filepath.Join(g.Root, filepath.FromSlash(rel))
+		if rel == ".." || strings.HasPrefix(rel, "../") {
+			out = append(out, fmt.Sprintf("`%s` links `%s`, which leaves the repository; fix the link (%s)", n.Rel, link, owner))
+			continue
+		}
+		if _, err := os.Stat(abs); err != nil {
+			out = append(out, fmt.Sprintf("`%s` links `%s`, but `%s` does not exist; fix the link (%s)", n.Rel, link, rel, owner))
+			continue
+		}
+		if frag == "" || !strings.HasSuffix(rel, ".md") {
+			continue
+		}
+		slugs, ok := anchors[rel]
+		if !ok {
+			slugs = map[string]bool{}
+			if text, err := os.ReadFile(abs); err == nil {
+				for _, s := range md.Sections(string(text)) {
+					slugs[md.Slug(s.Title)] = true
+				}
+			}
+			anchors[rel] = slugs
+		}
+		if !slugs[strings.ToLower(frag)] {
+			out = append(out, fmt.Sprintf("`%s` links `%s`, but `%s` has no heading `#%s`: a removed or renamed title; fix the link (%s)", n.Rel, link, rel, frag, owner))
+		}
+	}
+	return out
+}
+
+var schemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
 
 // loadLinks reads files of a directory node: each key is the name of a
 // tracked or trackable file directly in the directory that is neither chrome,
@@ -628,7 +697,8 @@ type finding struct {
 
 // NodeDrift lists what is wrong with n's own metadata: missing, orphan,
 // unreadable, not matching the content, a spec node that is not spec.md, a
-// duplicate title, a bad link of a directory node, a source the node may not
+// duplicate title, a link of a spec that names no file or no heading, a bad
+// link of a directory node, a source the node may not
 // list, a code node that lists no technical spec, or a perspective node the
 // code node lists that none of its technical specs serves.
 func (g *Graph) NodeDrift(n *Node) []string {
@@ -667,6 +737,9 @@ func (g *Graph) findings(n *Node) []finding {
 		block(fmt.Sprintf("`%s` carries files, which only a directory node has", n.MetaRel))
 	}
 	d = append(d, n.linkErrs...)
+	for _, msg := range n.refErrs {
+		warn(msg)
+	}
 	for _, e := range n.Sources {
 		switch {
 		case e.To == nil:

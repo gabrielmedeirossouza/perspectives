@@ -1,10 +1,12 @@
 // Package md reads the markdown shapes of specs/AGENTS.md: headings of
-// level 1–3 outside code fences, and the ### rules of a spec file.
+// level 1–3 outside code fences, the ### rules of a spec file, the targets of
+// its inline links, and the anchor slug of a title.
 package md
 
 import (
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // Section is a heading of level 1–3 with the lines up to the next one.
@@ -24,6 +26,8 @@ type Rule struct {
 var (
 	fenceRe   = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})")
 	headingRe = regexp.MustCompile(`^(#{1,3})\s+(.+?)\s*$`)
+	codeRe    = regexp.MustCompile("`+[^`]*`+")
+	linkRe    = regexp.MustCompile(`\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)`)
 )
 
 // Sections returns the headings of level 1–3 outside code fences, in order. A
@@ -70,4 +74,45 @@ func Rules(text string) []Rule {
 		out = append(out, Rule{Title: s.Title, Body: strings.Join(lines, "\n")})
 	}
 	return out
+}
+
+// Links returns the targets of the inline links and images outside code fences
+// and code spans, in order, as written: `[text](target)` gives target.
+func Links(text string) []string {
+	var out []string
+	var fence byte
+	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		if m := fenceRe.FindStringSubmatch(line); m != nil {
+			switch c := m[1][0]; {
+			case fence == 0:
+				fence = c
+			case fence == c:
+				fence = 0
+			}
+			continue
+		}
+		if fence != 0 {
+			continue
+		}
+		for _, m := range linkRe.FindAllStringSubmatch(codeRe.ReplaceAllString(line, ""), -1) {
+			out = append(out, m[1])
+		}
+	}
+	return out
+}
+
+// Slug is the #anchor of a title, as Anchors of specs/AGENTS.md defines it:
+// lowercase; every rune that is not a letter, a number, `_`, a space, or `-`
+// stripped, accented letters kept; each space becomes `-`.
+func Slug(title string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(title) {
+		switch {
+		case r == ' ':
+			b.WriteRune('-')
+		case r == '_' || r == '-' || unicode.IsLetter(r) || unicode.IsNumber(r):
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
