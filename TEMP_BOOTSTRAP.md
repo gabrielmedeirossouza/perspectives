@@ -59,7 +59,7 @@ Every line holds before finishing:
 - `go vet ./... && go test ./...` in `.agents/tools` are green.
 - `go run -C .agents/tools ./metadata` prints `no node under …`; `go run -C .agents/tools ./pending` prints `No pending work.`
 - `find .claude/skills -type l ! -exec test -e {} \; -print` prints nothing; `test -x .githooks/pre-commit` holds.
-- `grep -rn 'TEMP_BOOTSTRAP\|\.sdd/templates' --exclude-dir=.git .` prints nothing; `ls .agents/skills` lists exactly the skills kept.
+- `test ! -e TEMP_BOOTSTRAP.md && test ! -e .sdd/templates && test ! -e .sdd/sandbox` holds; `ls .agents/skills` lists exactly the skills kept.
 - `.sdd/.sdd-config.json` holds a version above 0, the remote, the paths, and the perspectives.
 
 ## Finish
