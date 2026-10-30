@@ -51,7 +51,7 @@ func Refresh(n *Node, now time.Time) (*meta.Metadata, error) {
 // a dangling or invalid source, a source whose own metadata has drift, a code
 // node that lists no technical spec, a code node whose sources do not match
 // the perspective nodes its technical specs serve, and a code node that waits
-// on /design. Recording a source listed since the last sync returns audited
+// on /sdd-design. Recording a source listed since the last sync returns audited
 // to 0: no judge has seen that edge.
 func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 	m, err := Refresh(n, now)
@@ -104,11 +104,11 @@ func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 // every technical spec the code node lists governs its code and that no
 // technical spec it obeys is missing. It refuses a node that is no code node,
 // one with drift (a hash that moved since the metadata was last written
-// included), one with a dangling source, and one that is an /implement unit —
+// included), one with a dangling source, and one that is an /sdd-implement unit —
 // stale against a source or missing a served perspective — so an approval is
 // recorded only on a node that has no drift and is no unit; the count then
 // persists until the hash moves or a sync records a new source. A node that
-// only waits on /design is approved.
+// only waits on /sdd-design is approved.
 func (g *Graph) Approve(n *Node, now time.Time) (*meta.Metadata, error) {
 	if n.Kind != Code {
 		return nil, fmt.Errorf("`%s` is a %s node; only a code node is approved", n.Rel, n.Kind)
@@ -120,7 +120,7 @@ func (g *Graph) Approve(n *Node, now time.Time) (*meta.Metadata, error) {
 		return nil, errors.New(strings.Join(d, "\n"))
 	}
 	if u, ok := g.codeUnit(n); ok {
-		return nil, fmt.Errorf("`%s` is an /implement unit (%s); approve it once synced", n.Rel, u.Reason)
+		return nil, fmt.Errorf("`%s` is an /sdd-implement unit (%s); approve it once synced", n.Rel, u.Reason)
 	}
 	m, err := Refresh(n, now)
 	if err != nil {

@@ -10,7 +10,7 @@ What lives in which perspective is named here. Each nested `AGENTS.md` fills the
 - **User** (`specs/user/`): what the user sees and does — screens, flows, copy. Screen behavior lives here, not in business.
 - **Operator** (`specs/operator/`): how the system is shipped and run — environments, deployment, observability — as policy. Nothing the product does for its users lives here.
 
-How any of it is built — stack, placement, contracts, persistence, toolchain — is a technical rule and lives in `src/specs/`, written by `/design` under `src/AGENTS.md`. No spec file under `specs/` cites `src/` (**Citation**).
+How any of it is built — stack, placement, contracts, persistence, toolchain — is a technical rule and lives in `src/specs/`, written by `/sdd-design` under `src/AGENTS.md`. No spec file under `specs/` cites `src/` (**Citation**).
 
 Apply the **Writing gate** before mutating a spec file under `specs/`. Reach `CONTEXT.md` when writing, changing, or reviewing any spec file here. Update it in the same session a term is defined, renamed, or retired. Shape is under **Glossary**. Reach `TODO.md` when a needed spec is missing or a parked item may close. Shape is under **TODO**.
 
@@ -80,7 +80,7 @@ _Avoid_: profile, permission group
 
 `TODO.md` is the stateful working set of work this repository still owes. Park what the current session cannot close — a needed feature or rule that does not exist, and this request does not create. Interview closes decisions the user can make now. Write only the rules this session can close.
 
-Four writers, one heading each. `/spec` parks under `## Missing spec` a needed feature or rule that does not exist and the request does not create. `/design` parks under `## Spec gap` a product rule it cannot design against — the body is open (a hole, an ambiguity, an undefined real path) or the rule does not exist yet; the spec write that closes it deletes the item. `/implement` parks under `## Design gap` a rule it cannot implement because the technical spec is open — an unnamed mechanism, an open alternative, a hole `/design` has to close or escalate; the design write that closes it deletes the item. `/audit` parks under `## Audit gap` a code node no technical spec governs — its judge found no spec under `src/specs/` whose rules the code obeys; the design write that closes it deletes the item. `pending` reads the three gap headings: a design gap parks its rule out of the next batch, a spec gap is named on the stale technical spec it holds, and an audit gap marks its code node as parked under `# Audit`, for `/design`.
+Four writers, one heading each. `/sdd-spec` parks under `## Missing spec` a needed feature or rule that does not exist and the request does not create. `/sdd-design` parks under `## Spec gap` a product rule it cannot design against — the body is open (a hole, an ambiguity, an undefined real path) or the rule does not exist yet; the spec write that closes it deletes the item. `/sdd-implement` parks under `## Design gap` a rule it cannot implement because the technical spec is open — an unnamed mechanism, an open alternative, a hole `/sdd-design` has to close or escalate; the design write that closes it deletes the item. `/sdd-audit` parks under `## Audit gap` a code node no technical spec governs — its judge found no spec under `src/specs/` whose rules the code obeys; the design write that closes it deletes the item. `pending` reads the three gap headings: a design gap parks its rule out of the next batch, a spec gap is named on the stale technical spec it holds, and an audit gap marks its code node as parked under `# Audit`, for `/sdd-design`.
 
 Read it at the start of a spec write, and again after writing a feature or rule that may unblock an item. Park in the same session as the block. Delete the item in the same session the parked work is done. A finished item leaves the file; this is remaining work, not a changelog.
 
@@ -143,7 +143,7 @@ The system **must** support exactly three roles: **Owner**, **Editor** and **Vie
 
 A perspective spec states what the product does and for whom: who may, when it expires, what the screen shows, what the click does, who may ship. What each perspective holds and leaves out is in that perspective's `AGENTS.md`. Reach it when scoping an item, writing a spec file, or reviewing a heading.
 
-A passage about a library, placement, contract, persistence, toolchain, or command is a technical item, whatever the request called it. It is not written here: it is named for `/design`, and the product rule it will serve is written first, so the technical rule can cite it by title.
+A passage about a library, placement, contract, persistence, toolchain, or command is a technical item, whatever the request called it. It is not written here: it is named for `/sdd-design`, and the product rule it will serve is written first, so the technical rule can cite it by title.
 
 ## Citation
 
@@ -163,7 +163,7 @@ Otherwise, a rule needed by more than one feature **moves** at the **second real
 
 Resolve the owner in this order:
 
-1. Obligation is about how code is written, built, verified, or placed → technical item, `/design`.
+1. Obligation is about how code is written, built, verified, or placed → technical item, `/sdd-design`.
 2. Obligation applies to the whole perspective or multiple feature boundaries → global rule of that perspective.
 3. One feature boundary owns the obligation independently → feature rule.
 
@@ -244,13 +244,13 @@ Violation is a grave failure. Volume, age, or “already reviewed” does not ex
 
 ## Writing gate
 
-**Done when:** every added, changed, renamed, moved, or removed rule is in its owner file; every applicable postulate holds; every written directory has fresh metadata; the glossary matches the terms the session resolved; items this session unblocked are gone from `TODO.md`; new blockers are parked there; technical items are named for `/design`.
+**Done when:** every added, changed, renamed, moved, or removed rule is in its owner file; every applicable postulate holds; every written directory has fresh metadata; the glossary matches the terms the session resolved; items this session unblocked are gone from `TODO.md`; new blockers are parked there; technical items are named for `/sdd-design`.
 
-1. **Scope** the item with that perspective's `AGENTS.md`: a product rule continues; a technical item is named for `/design` and the rest continues.
+1. **Scope** the item with that perspective's `AGENTS.md`: a product rule continues; a technical item is named for `/sdd-design` and the rest continues.
 2. **Resolve the owner:** an existing feature, the perspective's `spec.md` (second real consumer), or a new feature justified by the boundary criterion in that perspective's `AGENTS.md`.
 3. **Consult `CONTEXT.md` and `TODO.md`**, then draft against the postulates — checklist below. Fix violations before writing.
 4. **Write** the rule at its owner to the **Spec file** skeleton. Spec language is English. If a term was defined, renamed, or retired, update `CONTEXT.md` in the same session. Park new blockers and delete unblocked items in `TODO.md` in the same session.
-5. **Refresh metadata:** `go run -C .agents/tools ./metadata --write <dir>` for each directory written. A removed feature deletes its directory; the technical specs that served it show as dangling in `pending`, for `/design`.
+5. **Refresh metadata:** `go run -C .agents/tools ./metadata --write <dir>` for each directory written. A removed feature deletes its directory; the technical specs that served it show as dangling in `pending`, for `/sdd-design`.
 6. **Stop.**
 
 | | Ask |

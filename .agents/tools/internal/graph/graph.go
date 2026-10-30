@@ -462,7 +462,7 @@ func (g *Graph) findings(n *Node) []finding {
 	if n.Kind == Code && n.Meta != nil {
 		if msg := g.noTechnical(n); msg != "" {
 			warn(msg)
-		} else if !g.danglingTechnical(n) { // which perspectives are served is unknown until /implement drops it
+		} else if !g.danglingTechnical(n) { // which perspectives are served is unknown until /sdd-implement drops it
 			served, _ := g.served(n)
 			for _, e := range n.Sources {
 				if e.Valid() && e.To.Kind == Perspective {
@@ -539,7 +539,7 @@ func (g *Graph) Drift() []string {
 	return d
 }
 
-// Design lists what /design owes: perspective specs no technical spec serves,
+// Design lists what /sdd-design owes: perspective specs no technical spec serves,
 // technical specs stale against a source (with the rules that changed, and
 // the spec gap that parks one), and dangling sources of technical specs with
 // the rules recorded for them.
@@ -564,7 +564,7 @@ func (g *Graph) Design() []string {
 					line := fmt.Sprintf("`%s` is stale against `%s`: %s", n.Rel, e.To.Rel, e.Delta)
 					for _, gap := range g.gapsFor("spec", e.To.Rel) {
 						if _, ok := e.To.Rules[gap.Title]; ok || contains(e.Delta.Removed, gap.Title) {
-							line += fmt.Sprintf("; %q parked: %s (/spec)", gap.Title, gap.Reason)
+							line += fmt.Sprintf("; %q parked: %s (/sdd-spec)", gap.Title, gap.Reason)
 						}
 					}
 					out = append(out, line)
@@ -583,17 +583,17 @@ type RuleState struct {
 	Parked string // the reason of the ## Design gap item that parks it, if any
 }
 
-// Unit is one item of the /implement backlog: a technical spec with no code
+// Unit is one item of the /sdd-implement backlog: a technical spec with no code
 // node, or a code node stale against a source, holding a dangling one, or
 // missing a perspective node its technical specs serve.
 type Unit struct {
 	Node   *Node
 	Reason string
-	Wait   string // empty when the unit can run; otherwise what /design owes first
+	Wait   string // empty when the unit can run; otherwise what /sdd-design owes first
 	Rules  []RuleState
 }
 
-// Units lists the /implement backlog, sources first: a unit sits after every
+// Units lists the /sdd-implement backlog, sources first: a unit sits after every
 // technical spec it realizes or depends on.
 func (g *Graph) Units() []Unit {
 	type keyed struct {
@@ -722,7 +722,7 @@ func (g *Graph) codeUnit(c *Node) (Unit, bool) {
 	return u, true
 }
 
-// codeWait names what /design owes before code node c can run.
+// codeWait names what /sdd-design owes before code node c can run.
 func (g *Graph) codeWait(c *Node) string {
 	for _, e := range c.Sources {
 		if e.Valid() && e.To.Kind == Technical {
@@ -734,7 +734,7 @@ func (g *Graph) codeWait(c *Node) string {
 	return ""
 }
 
-// wait names what /design owes before code against t can run: t or a
+// wait names what /sdd-design owes before code against t can run: t or a
 // technical spec upstream of it is stale or has a dangling source.
 func (g *Graph) wait(t *Node, seen map[*Node]bool) string {
 	if seen == nil {
@@ -746,10 +746,10 @@ func (g *Graph) wait(t *Node, seen map[*Node]bool) string {
 	seen[t] = true
 	for _, e := range t.Sources {
 		if e.Dangling() {
-			return fmt.Sprintf("`%s` has a dangling source `%s` (/design)", t.Rel, e.Source.Path)
+			return fmt.Sprintf("`%s` has a dangling source `%s` (/sdd-design)", t.Rel, e.Source.Path)
 		}
 		if e.Stale() {
-			return fmt.Sprintf("`%s` is stale against `%s` (/design)", t.Rel, e.To.Rel)
+			return fmt.Sprintf("`%s` is stale against `%s` (/sdd-design)", t.Rel, e.To.Rel)
 		}
 	}
 	for _, e := range t.Sources {
@@ -762,8 +762,8 @@ func (g *Graph) wait(t *Node, seen map[*Node]bool) string {
 	return ""
 }
 
-// Batch splits the backlog into the units /implement continue runs now — the
-// first max that can run, sources first — and the units that wait on /design.
+// Batch splits the backlog into the units /sdd-implement continue runs now — the
+// first max that can run, sources first — and the units that wait on /sdd-design.
 func (g *Graph) Batch(max int) (run, wait []Unit) {
 	for _, u := range g.Units() {
 		switch {

@@ -12,7 +12,7 @@ import (
 )
 
 // Gap is one item parked in TODO.md of the specs root under ## Spec gap (a product
-// rule /design cannot design against), ## Design gap (a rule /implement
+// rule /sdd-design cannot design against), ## Design gap (a rule /sdd-implement
 // cannot implement), or ## Audit gap (a code node no technical spec governs).
 // Shape: `- **<title>** (`<owner>`) <reason>`, with an optional leading `[ ]`
 // tolerated. An audit gap's title names what the missing spec would decide
@@ -85,7 +85,7 @@ func (g *Graph) gapsFor(heading, node string) []*Gap {
 }
 
 // park marks the rules of a unit that a ## Design gap item parks; a unit whose
-// every rule is parked waits on /design.
+// every rule is parked waits on /sdd-design.
 func (g *Graph) park(u Unit) Unit {
 	parked := 0
 	for i, r := range u.Rules {
@@ -99,7 +99,7 @@ func (g *Graph) park(u Unit) Unit {
 		}
 	}
 	if u.Wait == "" && len(u.Rules) > 0 && parked == len(u.Rules) {
-		u.Wait = "every rule is parked under ## Design gap (/design)"
+		u.Wait = "every rule is parked under ## Design gap (/sdd-design)"
 	}
 	return u
 }

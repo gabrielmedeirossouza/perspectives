@@ -1,6 +1,6 @@
 // metadata: does the .metadata.json of each node reflect its content? It also
 // writes it, records which version of each source a node validated against,
-// and records the approvals of /audit on a code node.
+// and records the approvals of /sdd-audit on a code node.
 //
 // Usage: go run -C .agents/tools ./metadata [--write | --sync | --approve | --staged] [--root <dir>] [dir...]
 //
@@ -16,11 +16,11 @@
 //	              the first time; refuses a dangling or invalid source, one
 //	              whose own metadata has drift, a code node with no technical
 //	              spec or whose sources do not match the perspective nodes its
-//	              technical specs serve, and a code node that waits on /design
+//	              technical specs serve, and a code node that waits on /sdd-design
 //	--approve     --write, then add one approval to audited: a judge confirmed
 //	              the sources of the code node; refuses a node that is no code
 //	              node, has drift, changed since the judge read it, or is an
-//	              /implement unit (stale, dangling, missing a served
+//	              /sdd-implement unit (stale, dangling, missing a served
 //	              perspective)
 //	--staged      --write on every node holding a staged file, then git add
 //	              the metadata of every such node; the pre-commit hook runs

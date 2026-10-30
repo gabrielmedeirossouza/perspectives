@@ -1,10 +1,10 @@
-// pending: what work is pending, for whom — the specs /design owes, the code
-// /implement owes, the next /implement continue batch, and the code nodes
-// /audit owes, with the dossier a judge needs.
+// pending: what work is pending, for whom — the specs /sdd-design owes, the code
+// /sdd-implement owes, the next /sdd-implement continue batch, and the code nodes
+// /sdd-audit owes, with the dossier a judge needs.
 //
 // Usage: go run -C .agents/tools ./pending [--batch | --audit [--all] [dir...]] [--root <dir>]
 //
-//	--batch       print only the next batch (or what /design owes when nothing
+//	--batch       print only the next batch (or what /sdd-design owes when nothing
 //	              can be implemented) and the drift
 //	--audit       print the dossier of every code node that owes an audit — or
 //	              of the code nodes at or under each dir — and the drift
@@ -23,10 +23,10 @@
 //	              or missing a perspective node their technical specs serve —
 //	              each with its rules (new, changed, removed, renamed; park when
 //	              a ## Design gap holds it) and whether it runs or waits
-//	# Next batch  the units /implement continue runs now, at most 5, then the
+//	# Next batch  the units /sdd-implement continue runs now, at most 5, then the
 //	              units that wait and why
 //	# Audit       code nodes with no approval at their current content: owed
-//	              to /audit, blocked by drift, after /implement, or parked
+//	              to /sdd-audit, blocked by drift, after /sdd-implement, or parked
 //	              under ## Audit gap. With --audit, one dossier per node:
 //	              files, listed technical and perspective specs, candidate
 //	              technical specs not listed (naming the directory, global,
@@ -39,8 +39,8 @@
 // With nothing pending it prints "No pending work." and the drift. Exit 0
 // with the answer; non-zero with the reason on stderr.
 //
-// It implements **Continue** of .agents/skills/implement/SKILL.md and
-// **Inventory** of .agents/skills/audit/SKILL.md over the states of
+// It implements **Continue** of .agents/skills/sdd-implement/SKILL.md and
+// **Inventory** of .agents/skills/sdd-audit/SKILL.md over the states of
 // **Metadata** in the root AGENTS.md; they win over it.
 package main
 
@@ -170,7 +170,7 @@ func render(g *graph.Graph, batchOnly bool) string {
 		}
 		out = append(out, "")
 	} else if len(design) > 0 && batchOnly {
-		out = append(out, "# Next batch: none", "", "Nothing to implement; /design owes:")
+		out = append(out, "# Next batch: none", "", "Nothing to implement; /sdd-design owes:")
 		for _, line := range design {
 			out = append(out, "- "+line)
 		}
@@ -195,7 +195,7 @@ func render(g *graph.Graph, batchOnly bool) string {
 }
 
 // auditLines names every code node with no approval at its current content
-// and where it stands: owed, blocked, after /implement, or parked.
+// and where it stands: owed, blocked, after /sdd-implement, or parked.
 func auditLines(states []graph.AuditState) []string {
 	var out []string
 	for _, s := range states {
@@ -208,17 +208,17 @@ func auditLines(states []graph.AuditState) []string {
 }
 
 // standing renders one node's audit standing after its path: blocking drift
-// first, then a parked gap, then the /implement unit.
+// first, then a parked gap, then the /sdd-implement unit.
 func standing(s graph.AuditState, owed string) string {
 	switch {
 	case len(s.Blocked) > 0:
 		return fmt.Sprintf("`%s` %s — blocked: %s", s.Node.Rel, owed, strings.Join(s.Blocked, "; "))
 	case s.Parked != "":
-		return fmt.Sprintf("`%s` parked: %s (/design)", s.Node.Rel, s.Parked)
+		return fmt.Sprintf("`%s` parked: %s (/sdd-design)", s.Node.Rel, s.Parked)
 	case s.Unit != "":
-		return fmt.Sprintf("`%s` %s — after /implement: %s", s.Node.Rel, owed, s.Unit)
+		return fmt.Sprintf("`%s` %s — after /sdd-implement: %s", s.Node.Rel, owed, s.Unit)
 	}
-	return fmt.Sprintf("`%s` %s (/audit)", s.Node.Rel, owed)
+	return fmt.Sprintf("`%s` %s (/sdd-audit)", s.Node.Rel, owed)
 }
 
 // renderAudit prints the standing of the targeted code nodes and a dossier
@@ -263,7 +263,7 @@ func renderAudit(g *graph.Graph, all bool, targets []*graph.Node) string {
 func dossier(d graph.Dossier) []string {
 	out := []string{fmt.Sprintf("## `%s` — audited %d", d.State.Node.Rel, d.State.Audited), ""}
 	if d.State.Parked != "" {
-		out = append(out, "Parked: "+d.State.Parked+" (/design)", "")
+		out = append(out, "Parked: "+d.State.Parked+" (/sdd-design)", "")
 	}
 	out = append(out, "Files:")
 	out = append(out, bullets(d.Files)...)

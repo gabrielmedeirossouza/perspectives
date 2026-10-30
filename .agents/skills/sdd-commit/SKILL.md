@@ -1,17 +1,17 @@
 ---
-name: commit
+name: sdd-commit
 description: >-
   Reads the working tree changes, groups them into atomic Conventional Commits
   whose types map to SemVer impact, commits them, and pushes the current
   branch. Use when the user wants to commit and push the current work, or
-  types /commit.
+  types /sdd-commit.
 ---
 
-# commit
+# sdd-commit
 
 Reach `git status` and the diffs before writing any message. The message is derived from what the diff does, never from file names alone or from the session's narrative.
 
-Invoking `/commit` authorizes the commits and the push of the current branch. Do not ask again.
+Invoking `/sdd-commit` authorizes the commits and the push of the current branch. Do not ask again.
 
 ## User Input
 
@@ -26,15 +26,15 @@ $ARGUMENTS
 <hint> ::= free text about the intent of the changes
 ```
 
-Examples: `/commit`; `/commit remove review skills and TDD`. The hint informs the messages; the diff still decides type and scope. No argument = commit every change in the working tree.
+Examples: `/sdd-commit`; `/sdd-commit remove review skills and TDD`. The hint informs the messages; the diff still decides type and scope. No argument = commit every change in the working tree.
 
 ## Steps
 
 **Done when:** every change in the working tree is in exactly one commit; every message follows **Message**; the current branch is pushed; the user has the report.
 
 1. **Read** the state: `git branch --show-current`, `git status --porcelain`, `git diff`, `git diff --staged`, untracked file contents, and `git log --oneline -n 20`.
-2. **Stop** and report when: there is nothing to commit; HEAD is detached; the current branch is `prototype/*` (prototypes stay local; `/prototype` commits them); a merge, rebase, or cherry-pick is in progress; a file has conflict markers; a file carries a secret or matches an ignored-secret pattern (`.env`, `*.env`, keys, tokens) without being ignored.
-3. **Group** the changes into atomic commits: one logical change per commit, one type per commit. A file belongs to one commit; a file with mixed changes goes with its main change. A `.metadata.json` whose own hash moved goes with the content it hashes; a sync that changed only its recorded sources is a commit of its own, `docs(<scope>): acknowledge <source>`; an approval or a sources edit of `/audit`, which never moves a hash, is a commit of its own, `docs(<scope>): audit sources`. Order the commits so none depends on a file a later commit adds.
+2. **Stop** and report when: there is nothing to commit; HEAD is detached; the current branch is `prototype/*` (prototypes stay local; `/sdd-prototype` commits them); a merge, rebase, or cherry-pick is in progress; a file has conflict markers; a file carries a secret or matches an ignored-secret pattern (`.env`, `*.env`, keys, tokens) without being ignored.
+3. **Group** the changes into atomic commits: one logical change per commit, one type per commit. A file belongs to one commit; a file with mixed changes goes with its main change. A `.metadata.json` whose own hash moved goes with the content it hashes; a sync that changed only its recorded sources is a commit of its own, `docs(<scope>): acknowledge <source>`; an approval or a sources edit of `/sdd-audit`, which never moves a hash, is a commit of its own, `docs(<scope>): audit sources`. Order the commits so none depends on a file a later commit adds.
 4. **Classify** each group by **Type** and name its scope.
 5. **Commit** each group in order: `git add -- <paths>` with explicit paths (deletions included), then `git commit -m "<header>" -m "<body>"`. Never `git add -A`, `git add .`, `--amend`, or `--no-verify`. The pre-commit hook refreshes and stages the `.metadata.json` of the nodes in the group; that is expected. A failing hook → stop and report; do not bypass it.
 6. **Push** the current branch: `git push` when it has an upstream, otherwise `git push -u origin <branch>`. Never `--force` or `--force-with-lease`. A rejected push → stop and report; do not pull, rebase, or merge.
@@ -80,7 +80,7 @@ Example, as illustration:
 chore(skills)!: remove review skills and verdict panels
 
 Spec and implementation reviews are no longer part of the flow;
-/spec and /implement close without independent judges.
+/sdd-spec and /sdd-implement close without independent judges.
 
 BREAKING CHANGE: /spec-review and /implement-review no longer exist.
 ```

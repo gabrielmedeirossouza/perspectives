@@ -148,7 +148,7 @@ func TestPolicyChangeReachesDesignThenCode(t *testing.T) {
 	if r := units[0].Rules; len(r) != 1 || r[0] != (RuleState{Title: "Invite expiry", State: "changed", Source: "specs/business/invite"}) {
 		t.Fatalf("rules = %+v", r)
 	}
-	// /spec writes the metadata, /design acknowledges without changing the technical spec.
+	// /sdd-spec writes the metadata, /sdd-design acknowledges without changing the technical spec.
 	sync(t, root, "specs/business/invite")
 	g = sync(t, root, "src/specs/invite")
 	if d := g.Design(); len(d) > 0 {
@@ -386,7 +386,7 @@ func TestSyncRefusesACodeNodeThatWaits(t *testing.T) {
 	sync(t, root, "specs/business/invite")
 	g := load(t, root)
 	_, err := g.Sync(g.Node("src/backend/invite"), time.Now())
-	if err == nil || !strings.Contains(err.Error(), "waits: `src/specs/invite` is stale against `specs/business/invite` (/design)") {
+	if err == nil || !strings.Contains(err.Error(), "waits: `src/specs/invite` is stale against `specs/business/invite` (/sdd-design)") {
 		t.Fatalf("sync accepted a waiting code node: %v", err)
 	}
 }
@@ -415,7 +415,7 @@ func TestDesignGapParksRulesAndSpecGapAnnotates(t *testing.T) {
 	write(t, root, "specs/TODO.md", "# TODO\n\n## Design gap\n\n- **Token storage** (`src/specs/invite`) names no persistence package.\n- [ ] **Ghost** (`src/specs/invite`) matches nothing.\n\n## Spec gap\n\n- **Invite expiry** (`business/invite`) leaves the grace period undefined.\n- broken line\n")
 	g := load(t, root)
 	u := g.Units()
-	if len(u) != 1 || len(u[0].Rules) != 1 || u[0].Rules[0].Parked != "names no persistence package" || u[0].Wait != "every rule is parked under ## Design gap (/design)" {
+	if len(u) != 1 || len(u[0].Rules) != 1 || u[0].Rules[0].Parked != "names no persistence package" || u[0].Wait != "every rule is parked under ## Design gap (/sdd-design)" {
 		t.Fatalf("units = %+v", u)
 	}
 	if run, wait := g.Batch(5); len(run) != 0 || len(wait) != 1 {
@@ -427,7 +427,7 @@ func TestDesignGapParksRulesAndSpecGapAnnotates(t *testing.T) {
 	}
 	write(t, root, "specs/business/invite/spec.md", strings.Replace(pSpec, "7 days", "14 days", 1))
 	g = load(t, root)
-	if !has(g.Design(), `changed "Invite expiry"; "Invite expiry" parked: leaves the grace period undefined (/spec)`) {
+	if !has(g.Design(), `changed "Invite expiry"; "Invite expiry" parked: leaves the grace period undefined (/sdd-spec)`) {
 		t.Fatalf("design = %v", g.Design())
 	}
 }
@@ -506,7 +506,7 @@ func TestCodeNodeWithoutTechnicalSpecIsDrift(t *testing.T) {
 		t.Fatalf("sync on a code node with no technical spec: %v", err)
 	}
 	if s := g.AuditOf(g.Node("src/backend/invite")); s.Unit == "" || len(s.Blocked) == 0 {
-		t.Fatalf("an unsynced perspective is /implement's first and a hand-written file is drift: %+v", s)
+		t.Fatalf("an unsynced perspective is /sdd-implement's first and a hand-written file is drift: %+v", s)
 	}
 	// With no source at all, once written, nothing blocks the judge: it proposes the spec.
 	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1}`+"\n")
@@ -536,7 +536,7 @@ func TestCodeNodeWithoutTechnicalSpecIsDrift(t *testing.T) {
 		t.Fatalf("units = %+v", u)
 	}
 	if s := g.AuditOf(g.Node("src/backend/invite")); s.Unit == "" || s.Owed() {
-		t.Fatalf("a dangling source is /implement's first: %+v", s)
+		t.Fatalf("a dangling source is /sdd-implement's first: %+v", s)
 	}
 }
 
@@ -582,7 +582,7 @@ func TestAuditedStartsAtZeroAndResetsOnContentChangeOrNewSource(t *testing.T) {
 	if a := g.Node("src/backend/invite").Meta.Audited; a == nil || *a != 1 {
 		t.Fatalf("editing sources moved audited: %v", a)
 	}
-	if _, err := g.Approve(g.Node("src/backend/invite"), time.Now()); err == nil || !strings.Contains(err.Error(), "/implement unit") {
+	if _, err := g.Approve(g.Node("src/backend/invite"), time.Now()); err == nil || !strings.Contains(err.Error(), "/sdd-implement unit") {
 		t.Fatalf("approve accepted a node with an unsynced source: %v", err)
 	}
 	g = sync(t, root, "src/backend/invite")
@@ -611,7 +611,7 @@ func TestApproveRefusals(t *testing.T) {
 	write(t, root, "specs/business/invite/spec.md", strings.Replace(pSpec, "7 days", "14 days", 1))
 	sync(t, root, "specs/business/invite")
 	g = load(t, root)
-	if _, err := g.Approve(g.Node("src/backend/invite"), time.Now()); err == nil || !strings.Contains(err.Error(), "/implement unit (stale against") {
+	if _, err := g.Approve(g.Node("src/backend/invite"), time.Now()); err == nil || !strings.Contains(err.Error(), "/sdd-implement unit (stale against") {
 		t.Fatalf("approve accepted a stale node: %v", err)
 	}
 }
@@ -663,7 +663,7 @@ func TestDossierTiersCandidatesAndNamesCorrections(t *testing.T) {
 		t.Fatalf("drop = %+v", d.DropPerspectives)
 	}
 	if s := d.State; s.Unit == "" || s.Owed() {
-		t.Fatalf("a missing served perspective is /implement's first: %+v", s)
+		t.Fatalf("a missing served perspective is /sdd-implement's first: %+v", s)
 	}
 	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "specs/business/invite"}, {"path": "specs/user/home"}]}`+"\n")
 	sync(t, root, "src/backend/invite")

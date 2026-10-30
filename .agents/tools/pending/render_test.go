@@ -80,7 +80,7 @@ func TestBatchModeNamesDesignWorkWhenNothingCanBeImplemented(t *testing.T) {
 	write(t, root, "specs/business/invite/spec.md", "# Invite\n\n## S\n\n### R\n\nx\n")
 	g := load(t, root)
 	out := render(g, true)
-	for _, want := range []string{"# Next batch: none", "Nothing to implement; /design owes:", "- `specs/business/invite` has no technical spec", "# Drift"} {
+	for _, want := range []string{"# Next batch: none", "Nothing to implement; /sdd-design owes:", "- `specs/business/invite` has no technical spec", "# Drift"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("batch output lacks %q:\n%s", want, out)
 		}
@@ -115,7 +115,7 @@ func TestAuditSectionAndDossier(t *testing.T) {
 	root := auditFixture(t)
 	g := load(t, root)
 	full := render(g, false)
-	if !strings.Contains(full, "No pending work.") || !strings.Contains(full, "# Audit\n\n- `src/backend/invite` owes an audit (/audit)") || strings.Contains(full, "`src` ") {
+	if !strings.Contains(full, "No pending work.") || !strings.Contains(full, "# Audit\n\n- `src/backend/invite` owes an audit (/sdd-audit)") || strings.Contains(full, "`src` ") {
 		t.Fatalf("full output:\n%s", full)
 	}
 	if batch := render(g, true); strings.Contains(batch, "# Audit") {
@@ -163,14 +163,14 @@ func TestAuditSectionAndDossier(t *testing.T) {
 	write(t, root, "src/backend/invite/invite.ts", "y\n")
 	refresh(t, root, "src/backend/invite")
 	g = load(t, root)
-	if full := render(g, false); !strings.Contains(full, "- `src/backend/invite` parked: nothing fits (/design)") {
+	if full := render(g, false); !strings.Contains(full, "- `src/backend/invite` parked: nothing fits (/sdd-design)") {
 		t.Fatalf("parked node:\n%s", full)
 	}
 	targets, _ = codeNodes(g, []string{"src/backend"})
-	if out := renderAudit(g, false, targets); !strings.Contains(out, "- `src/backend/invite` parked: nothing fits (/design)") || strings.Contains(out, "## `src/backend/invite`") {
+	if out := renderAudit(g, false, targets); !strings.Contains(out, "- `src/backend/invite` parked: nothing fits (/sdd-design)") || strings.Contains(out, "## `src/backend/invite`") {
 		t.Fatalf("parked, not judged:\n%s", out)
 	}
-	if out := renderAudit(g, true, targets); !strings.Contains(out, "## `src/backend/invite` — audited 0\n\nParked: nothing fits (/design)") {
+	if out := renderAudit(g, true, targets); !strings.Contains(out, "## `src/backend/invite` — audited 0\n\nParked: nothing fits (/sdd-design)") {
 		t.Fatalf("parked judged under --all:\n%s", out)
 	}
 	// Blocked wins over parked: content changed again, not written.
@@ -183,7 +183,7 @@ func TestAuditSectionAndDossier(t *testing.T) {
 	if out := renderAudit(g, true, targets); !strings.Contains(out, "- `src/backend/invite` not judged — blocked:") || strings.Contains(out, "## `src/backend/invite`") {
 		t.Fatalf("blocked --all output:\n%s", out)
 	}
-	// Approved, then its spec changed: after /implement, never "skipped".
+	// Approved, then its spec changed: after /sdd-implement, never "skipped".
 	write(t, root, "specs/TODO.md", "# TODO\n")
 	refresh(t, root, "src/backend/invite")
 	approve(t, root, "src/backend/invite")
@@ -193,7 +193,7 @@ func TestAuditSectionAndDossier(t *testing.T) {
 	targets, _ = codeNodes(g, []string{"src/backend"})
 	for _, all := range []bool{false, true} {
 		out := renderAudit(g, all, targets)
-		if !strings.Contains(out, "- `src/backend/invite` not judged — after /implement: stale against `specs/business/invite`") || strings.Contains(out, "skipped") || strings.Contains(out, "## `src/backend/invite`") {
+		if !strings.Contains(out, "- `src/backend/invite` not judged — after /sdd-implement: stale against `specs/business/invite`") || strings.Contains(out, "skipped") || strings.Contains(out, "## `src/backend/invite`") {
 			t.Fatalf("approved-then-stale (all=%v):\n%s", all, out)
 		}
 	}

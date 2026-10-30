@@ -1,4 +1,4 @@
-Product specs (`specs/`) are the product source of truth: what the system does, for whom, one perspective per actor. Technical specs (`src/specs/`) say how it is built. Code (`src/`) materializes both. Reach `specs/AGENTS.md` for product behavior or specs, `src/AGENTS.md` for technical specs or code. Every spec directory and every code directory `/implement` declares is a node of **Metadata**; `pending` is the observer that reads them.
+Product specs (`specs/`) are the product source of truth: what the system does, for whom, one perspective per actor. Technical specs (`src/specs/`) say how it is built. Code (`src/`) materializes both. Reach `specs/AGENTS.md` for product behavior or specs, `src/AGENTS.md` for technical specs or code. Every spec directory and every code directory `/sdd-implement` declares is a node of **Metadata**; `pending` is the observer that reads them.
 
 ## Harnesses
 
@@ -12,11 +12,11 @@ A skill that delegates uses the harness's subagent tool: `Task` in Cursor, `Agen
 
 ## Working files
 
-`.sdd/` holds working files of the flow `/brainstorming` → `/prototype` → `/spec` → `/design` → `/implement`, never rules. `specs/` and `src/specs/` stay the source of truth; a brainstorm never overrides a rule.
+`.sdd/` holds working files of the flow `/sdd-brainstorming` → `/sdd-prototype` → `/sdd-spec` → `/sdd-design` → `/sdd-implement`, never rules. `specs/` and `src/specs/` stay the source of truth; a brainstorm never overrides a rule.
 
 - `.sdd/.sdd-config.json`: the framework version this repository is on, the remote it came from, and the layout the tools read: `paths.specs` (product specs, `specs/`), `paths.src` (code, `src/`), `paths.technical` (technical specs, `src/specs/`). The file marks the repository root for every tool; a path left out takes the default in parentheses.
-- `.sdd/brainstorming/<name>.md`: versioned draft of an idea. `/brainstorming` writes it, `/prototype` reads it, `/spec` consumes and deletes it.
-- `.sdd/prototypes/`: git-ignored. One worktree and one manifest per prototype, owned by `/prototype`.
+- `.sdd/brainstorming/<name>.md`: versioned draft of an idea. `/sdd-brainstorming` writes it, `/sdd-prototype` reads it, `/sdd-spec` consumes and deletes it.
+- `.sdd/prototypes/`: git-ignored. One worktree and one manifest per prototype, owned by `/sdd-prototype`.
 
 ## Tools
 
@@ -28,7 +28,7 @@ A skill that delegates uses the harness's subagent tool: `Task` in Cursor, `Agen
 - **Judgment is not a tool.** A recurring procedure that needs judgment goes in the report as a proposed skill change.
 - **Read-only.** A tool reports; the skill writes. The one exception is `.metadata.json`, which `metadata` writes beyond the skeleton a skill authors: `version` and `sources[].path`.
 
-Scripts and tooling of this repository are written in Go, standard library only; none is Python, TypeScript, or JavaScript. The pre-commit hook is the one shell file, a shim whose only command execs a Go tool. Every skill may create and edit files under `.agents/tools/` on top of its own permissions. `/prototype` is the exception: it names tool candidates in its report.
+Scripts and tooling of this repository are written in Go, standard library only; none is Python, TypeScript, or JavaScript. The pre-commit hook is the one shell file, a shim whose only command execs a Go tool. Every skill may create and edit files under `.agents/tools/` on top of its own permissions. `/sdd-prototype` is the exception: it names tool candidates in its report.
 
 ## Metadata
 
@@ -63,22 +63,22 @@ Every field, for illustration; which ones a node carries depends on its kind, as
 | State | Means | Owed by |
 |-------|-------|---------|
 | drift | a `.metadata.json` missing, orphan (no `spec.md` beside it), unreadable, or not matching its content; a duplicate rule title; a source a node may not list; a code node listing no technical spec; a perspective node a code node lists that none of its technical specs serves; a file under `src/` outside any node; technical specs that source each other in a cycle; a gap in `TODO.md` that matches no rule, or an audit gap naming no code node that owes an audit | whoever last wrote there: `metadata --write`, or fix the sources |
-| stale | a source's current hash differs from the recorded one; the rule delta names what was added, changed, removed, or renamed. On a code node, also: a perspective node its technical specs serve that it does not list yet | `/design` on a technical node, `/implement` on a code node |
+| stale | a source's current hash differs from the recorded one; the rule delta names what was added, changed, removed, or renamed. On a code node, also: a perspective node its technical specs serve that it does not list yet | `/sdd-design` on a technical node, `/sdd-implement` on a code node |
 | dangling | a listed source is no node | same as stale |
-| unconsumed | a perspective node no technical node lists; a technical node no code node lists | `/design`; `/implement` |
-| waits | a code node whose technical spec, or one upstream of it, is stale or dangling; a unit whose every rule a `## Design gap` item parks | `/design` first |
+| unconsumed | a perspective node no technical node lists; a technical node no code node lists | `/sdd-design`; `/sdd-implement` |
+| waits | a code node whose technical spec, or one upstream of it, is stale or dangling; a unit whose every rule a `## Design gap` item parks | `/sdd-design` first |
 | fresh | none of the above; on a code node it means implemented and tested, because only a passed Implementation gate syncs it | — |
 
-**Audit**, orthogonal to the states: a code node is `fresh` and may still owe an audit. `audited` counts the approvals `/audit` recorded at the node's current `hash`: a judge read the code and confirmed that every technical spec the node lists governs it and that no technical spec it obeys is missing. It returns to 0 when `hash` moves and when a sync records a source listed since the last sync; an approval is recorded only on a node that has no drift and is no `/implement` unit, and the count then persists until one of those resets it. `pending` lists every code node at 0 under `# Audit` — owed to `/audit`; blocked while its content or metadata is not what it claims (a hash or rule map that does not match, an unreadable file, an invalid source); after `/implement` when the node is one of its units; or parked under `## Audit gap` of `TODO.md` because no technical spec governs the code yet. A node listing no technical spec, or a perspective none of its technical specs serves, is owed: the judge names the spec, and `/audit` drops the perspective. `pending --audit` prints the dossier a judge needs. Only 0 against ≥ 1 is read; the count is informational.
+**Audit**, orthogonal to the states: a code node is `fresh` and may still owe an audit. `audited` counts the approvals `/sdd-audit` recorded at the node's current `hash`: a judge read the code and confirmed that every technical spec the node lists governs it and that no technical spec it obeys is missing. It returns to 0 when `hash` moves and when a sync records a source listed since the last sync; an approval is recorded only on a node that has no drift and is no `/sdd-implement` unit, and the count then persists until one of those resets it. `pending` lists every code node at 0 under `# Audit` — owed to `/sdd-audit`; blocked while its content or metadata is not what it claims (a hash or rule map that does not match, an unreadable file, an invalid source); after `/sdd-implement` when the node is one of its units; or parked under `## Audit gap` of `TODO.md` because no technical spec governs the code yet. A node listing no technical spec, or a perspective none of its technical specs serves, is owed: the judge names the spec, and `/sdd-audit` drops the perspective. `pending --audit` prints the dossier a judge needs. Only 0 against ≥ 1 is read; the count is informational.
 
 **Writers:**
 
 | Writer | Writes | Then runs |
 |--------|--------|-----------|
-| `/spec` | `specs/**/spec.md` | `metadata --write <dir>` |
-| `/design` | `src/specs/<name>/spec.md` and the `sources[].path` of its node | `metadata --sync <dir>`, also to acknowledge a stale source that needs no change |
-| `/implement` | code and the `sources[].path` of its code nodes: a new node, a perspective node its technical specs came to serve, a dangling source dropped | `metadata --write` on a new node; `metadata --sync <dir>` only after the Implementation gate |
-| `/audit` | the `sources[].path` of a code node on a judge's verdict — a technical spec the code obeys added, one whose placement puts the code elsewhere dropped, and the perspective nodes that follow — and `## Audit gap` of `TODO.md` | `metadata --write <dir>` on a node it changed; `metadata --approve <dir>` on a node the judge approved as listed |
+| `/sdd-spec` | `specs/**/spec.md` | `metadata --write <dir>` |
+| `/sdd-design` | `src/specs/<name>/spec.md` and the `sources[].path` of its node | `metadata --sync <dir>`, also to acknowledge a stale source that needs no change |
+| `/sdd-implement` | code and the `sources[].path` of its code nodes: a new node, a perspective node its technical specs came to serve, a dangling source dropped | `metadata --write` on a new node; `metadata --sync <dir>` only after the Implementation gate |
+| `/sdd-audit` | the `sources[].path` of a code node on a judge's verdict — a technical spec the code obeys added, one whose placement puts the code elsewhere dropped, and the perspective nodes that follow — and `## Audit gap` of `TODO.md` | `metadata --write <dir>` on a node it changed; `metadata --approve <dir>` on a node the judge approved as listed |
 | pre-commit hook | — | `metadata --staged`: refreshes and stages the metadata of every node holding a staged file, never a sync. It hashes the working tree, so a partially staged file is hashed as it is on disk |
 
-The hook is `.githooks/pre-commit`; enable it once per clone with `git config core.hooksPath .githooks`. It needs Go. A `.metadata.json` whose own hash moved travels in the commit of the content it hashes; a sync that changed only its recorded sources — an acknowledgement, a revalidation — or an approval or sources edit of `/audit`, which never moves a hash, is a commit of its own, type `docs`.
+The hook is `.githooks/pre-commit`; enable it once per clone with `git config core.hooksPath .githooks`. It needs Go. A `.metadata.json` whose own hash moved travels in the commit of the content it hashes; a sync that changed only its recorded sources — an acknowledgement, a revalidation — or an approval or sources edit of `/sdd-audit`, which never moves a hash, is a commit of its own, type `docs`.

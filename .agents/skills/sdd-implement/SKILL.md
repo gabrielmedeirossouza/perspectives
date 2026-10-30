@@ -1,14 +1,14 @@
 ---
-name: implement
+name: sdd-implement
 description: >-
   Implements product code under src/ from a technical spec in src/specs/ and
   the perspective specs it serves, or, with continue, the next batch of the
   backlog — up to 5 units, sources first, as the pending tool reports them.
   Use when the user wants code for a technical spec or rule title, wants to
-  continue implementing what is pending, or types /implement.
+  continue implementing what is pending, or types /sdd-implement.
 ---
 
-# implement
+# sdd-implement
 
 Reach the root `AGENTS.md` (**Metadata**) and `src/AGENTS.md` before resolving a target or writing code. The first defines nodes, sources, and states; the second the source tree, the implementation postulates (C1–C8), and the Implementation gate.
 
@@ -28,7 +28,7 @@ $ARGUMENTS
 <titles> ::= comma-separated rule titles
 ```
 
-Examples: `/implement continue`; `/implement invite`; `/implement src/specs/invite:Invite creation endpoint`; `/implement http-client`.
+Examples: `/sdd-implement continue`; `/sdd-implement invite`; `/sdd-implement src/specs/invite:Invite creation endpoint`; `/sdd-implement http-client`.
 
 `continue` also answers to a single word that asks to resume: `next`, `resume`, `continuar`, `próximo`, `seguir`. The keyword wins over a name.
 
@@ -40,13 +40,13 @@ Examples: `/implement continue`; `/implement invite`; `/implement src/specs/invi
 
 1. **Reach** the root `AGENTS.md`, `src/AGENTS.md`, and `specs/AGENTS.md`.
 2. **Resolve the seed**: under `continue`, the batch of **Continue**. Otherwise a technical spec under `src/specs/`, by path or by name. Ambiguous → list candidates and ask.
-3. **Close** the set: the technical spec, the perspective specs it serves, the technical specs it depends on (for reading), and the code nodes that list it. Run `go run -C .agents/tools ./pending`: its `# Implement` lines name, per node, the rules to run and their state — new, changed, removed, renamed — and whether the node waits on `/design`. Apply `:<titles>` after closure. A unit that waits is not run: report what `/design` owes and stop. Report the plan **before** executing.
+3. **Close** the set: the technical spec, the perspective specs it serves, the technical specs it depends on (for reading), and the code nodes that list it. Run `go run -C .agents/tools ./pending`: its `# Implement` lines name, per node, the rules to run and their state — new, changed, removed, renamed — and whether the node waits on `/sdd-design`. Apply `:<titles>` after closure. A unit that waits is not run: report what `/sdd-design` owes and stop. Report the plan **before** executing.
 4. **Queue:** removed rules first, then the rules `pending` names — or every rule of the seed and of the perspective specs it serves, for a technical spec with no code node. Topological order by citations; the product rule before the technical rule that serves it; top → bottom in the file.
 5. **Phases** = `##` section of the rule owner — a perspective spec or the technical spec — restricted to the queued rules, band of 6–10 items. Merge only with the next section **in the same file**. Removed rules form the first phases. One phase = one owner. Each phase runs twice: first as a **code phase** (code and nodes, no tests), then, once every code phase of the run is done, as a **test phase** (tests), in the same order.
 6. **Orchestrate** (below). Each item: Implementation gate. A new directory gets its `.metadata.json` with `sources[].path` and `metadata --write`. A code node that `pending` reports as missing a source gets that perspective node added to `sources[].path`; a dangling source is dropped once its exclusive code is deleted. A code node is synced only after the test phases are green and every rule its sources hold is 100% done; otherwise it stays stale. Spec files, `src/specs/`, and `CONTEXT.md` stay untouched.
-7. **Report** by phase and item: done, blocked, parked, files created, indirections (C7), design gaps, test results, nodes synced and nodes left stale, and the nodes that now owe `/audit`.
+7. **Report** by phase and item: done, blocked, parked, files created, indirections (C7), design gaps, test results, nodes synced and nodes left stale, and the nodes that now owe `/sdd-audit`.
 
-A hole or open spec, product or technical → park the rule under `## Design gap` of `TODO.md` (shape in `specs/AGENTS.md`) and report `/design`, which closes it or escalates it to `/spec`; do not edit the spec. Only the parent writes `TODO.md`; a child reports the block.
+A hole or open spec, product or technical → park the rule under `## Design gap` of `TODO.md` (shape in `specs/AGENTS.md`) and report `/sdd-design`, which closes it or escalates it to `/sdd-spec`; do not edit the spec. Only the parent writes `TODO.md`; a child reports the block.
 
 ## Continue
 
@@ -55,14 +55,14 @@ A hole or open spec, product or technical → park the rule under `## Design gap
 **Done when:** every unit of the batch is synced or parked as a design gap; the user has the report and the next batch.
 
 1. **Inventory:** run `go run -C .agents/tools ./pending --batch` (catalog in `.agents/tools/AGENTS.md`). It applies steps 2–3; where it disagrees with them, they win and the tool is fixed in the same session.
-2. **Unit** = one technical spec with no code node, or one code node stale against a source, holding a dangling one, or missing a perspective node its technical specs serve. Units run sources first: a unit comes after every technical spec it realizes or depends on; ties by path. A unit **waits** when its technical spec, or one upstream of it, is stale or dangling — that is `/design`'s work first — or when every rule it has left is parked under `## Design gap`. A parked rule is skipped inside a unit that runs.
+2. **Unit** = one technical spec with no code node, or one code node stale against a source, holding a dangling one, or missing a perspective node its technical specs serve. Units run sources first: a unit comes after every technical spec it realizes or depends on; ties by path. A unit **waits** when its technical spec, or one upstream of it, is stale or dangling — that is `/sdd-design`'s work first — or when every rule it has left is parked under `## Design gap`. A parked rule is skipped inside a unit that runs.
 3. **Batch:** the first 5 units that can run, in order. No unit can run while units remain → report what waits and on what, and stop. Nothing pending → report that the backlog is done, plus drift, and stop.
 4. **Run** Steps 3–7 with the batch as the seed. A stale node that already has code is an interrupted or outdated run: revalidate its code against the rules `pending` names and finish it. A dangling source means the spec is gone: delete the code exclusive to it, then drop the source from the node; if no technical spec remains, delete the node or list the technical spec that now governs it.
 5. **Report**, on top of Step 7: rules parked in this run, drift for whoever owns it, and the next batch from a fresh run of the tool.
 
 ## Orchestration
 
-The agent that receives `/implement` is the **parent**. Unit = **phase**, never the item.
+The agent that receives `/sdd-implement` is the **parent**. Unit = **phase**, never the item.
 
 **Parent**
 

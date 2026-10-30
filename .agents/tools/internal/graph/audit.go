@@ -15,18 +15,18 @@ import (
 
 // AuditState is where a code node stands against the audit of its sources:
 // the approvals it holds at its current hash, the drift that blocks a judge
-// from reading it, whether /implement owes it first, and the ## Audit gap
+// from reading it, whether /sdd-implement owes it first, and the ## Audit gap
 // that parks it.
 type AuditState struct {
 	Node    *Node
 	Audited int
 	Blocked []string // blocking drift, each line naming its fix
-	Unit    string   // why the node is an /implement unit; empty when it is none
+	Unit    string   // why the node is an /sdd-implement unit; empty when it is none
 	Parked  string   // reason of the ## Audit gap item naming it; empty when none
 }
 
 // Owed reports whether a judge is due now: no approval at the current hash,
-// nothing blocking, no /implement unit, not parked.
+// nothing blocking, no /sdd-implement unit, not parked.
 func (s AuditState) Owed() bool {
 	return s.Audited == 0 && len(s.Blocked) == 0 && s.Unit == "" && s.Parked == ""
 }
@@ -101,7 +101,7 @@ func (c Candidate) Tier() int {
 }
 
 // Dossier is what a judge needs about one code node. A served perspective the
-// node misses is an /implement unit, not judged, so only drops are listed.
+// node misses is an /sdd-implement unit, not judged, so only drops are listed.
 type Dossier struct {
 	State            AuditState
 	Files            []string
