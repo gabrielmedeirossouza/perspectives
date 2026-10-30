@@ -249,6 +249,58 @@ func TestBootstrapThenUpdateMergesThreeWays(t *testing.T) {
 	}
 }
 
+func TestConfigDecidesWhatComesBackAndWhatIsRefused(t *testing.T) {
+	up, _ := upstream(t)
+	proj := t.TempDir()
+	// Perspectives left out: every shipped kind; a skill removed by hand comes back.
+	write(t, proj, ".sdd/.sdd-config.json", `{"version": 0, "remote": "r"}`+"\n")
+	cfg, _ := config.Load(proj)
+	p, err := plan(proj, up, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := p.render()
+	for _, want := range []string{"add      specs/user/AGENTS.md", "add      specs/operator/AGENTS.md", "add      .agents/skills/sdd-design/SKILL.md"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("plan lacks %q:\n%s", want, out)
+		}
+	}
+	if _, err := p.apply(proj); err != nil {
+		t.Fatal(err)
+	}
+	os.RemoveAll(filepath.Join(proj, ".agents/skills/sdd-design"))
+	cfg, _ = config.Load(proj)
+	p, _ = plan(proj, up, cfg)
+	if out := p.render(); !strings.Contains(out, "add      .agents/skills/sdd-design/SKILL.md (from") && !strings.Contains(out, "add      .agents/skills/sdd-design/SKILL.md — the config keeps it") {
+		t.Fatalf("a removed skill the config keeps did not come back:\n%s", out)
+	}
+	// A dropped skill is dropped in the config: its directory goes, and so does the empty parent.
+	write(t, proj, ".sdd/.sdd-config.json", strings.Replace(read(t, proj, ".sdd/.sdd-config.json"), `"remote": "r"`, `"remote": "r", "skills": ["sdd-spec"]`, 1))
+	cfg, _ = config.Load(proj)
+	p, _ = plan(proj, up, cfg)
+	if _, err := p.apply(proj); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(proj, ".agents/skills/sdd-design")); err == nil {
+		t.Fatal("dropped skill directory kept")
+	}
+	// Unknown from and unknown skill are refused; an older framework too.
+	for _, text := range []string{`{"version": 2, "remote": "r", "perspectives": [{"name": "x", "from": "customer"}]}`, `{"version": 2, "remote": "r", "skills": ["sdd-nope"]}`, `{"version": 9, "remote": "r"}`} {
+		write(t, proj, ".sdd/.sdd-config.json", text+"\n")
+		cfg, _ = config.Load(proj)
+		if _, err := plan(proj, up, cfg); err == nil {
+			t.Fatalf("%s: accepted", text)
+		}
+	}
+	// A kind with two perspectives leaves its token and names the file.
+	write(t, proj, ".sdd/.sdd-config.json", `{"version": 0, "remote": "r", "perspectives": [{"name": "player", "from": "user"}, {"name": "coach", "from": "user"}]}`+"\n")
+	cfg, _ = config.Load(proj)
+	p, _ = plan(proj, up, cfg)
+	if out := p.render(); !strings.Contains(out, "by hand: review specs/AGENTS.md: it names a perspective kind") {
+		t.Fatalf("ambiguous kind not named:\n%s", out)
+	}
+}
+
 func TestBaseFallsBackToTheNewestVersionBelow(t *testing.T) {
 	up, v1 := upstream(t)
 	proj := t.TempDir()

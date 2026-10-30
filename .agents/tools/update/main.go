@@ -20,18 +20,24 @@
 //
 // Mapping, from the project's config: specs/<kind>/… goes to
 // <paths.specs>/<name>/… for every perspective whose from is <kind> (none:
-// skipped); src/specs/… to <paths.technical>/…; src/… to <paths.src>/…; a
-// skill not in skills is skipped; .sdd/.sdd-config.json is never copied. In
+// skipped; perspectives left out: every shipped kind); src/specs/… to
+// <paths.technical>/…; src/… to <paths.src>/…; a skill not in skills is
+// skipped (skills left out: every skill); .sdd/.sdd-config.json is never
+// copied. A from or a skill the framework does not ship is an error. In
 // every .md the tokens src/specs/, specs/, src/, and specs/<kind>/ become
-// the project's. The base is the framework at the commit whose config holds
-// version N (the newest at or below N when N is gone), mapped the same way,
-// so a three-way merge keeps what the project adapted.
+// the project's; a kind with two perspectives or none leaves its token for
+// the agent, named by hand. The base is the framework at the commit whose
+// config holds version N (the newest at or below N when N is gone, on the
+// branch the checkout has), mapped the same way, so a three-way merge keeps
+// what the project adapted. The config is the one record of what the
+// project keeps: a file it holds no more comes back as an add; a dropped
+// skill or perspective is dropped there. A framework older than N is refused.
 //
 // Output, plain text: `version N -> M` with the source and the base, then
-// one line per file — add, update, merge, conflict, delete, missing (the
-// project removed it; left absent), same, skip — with the template path it
-// comes from when that differs, then what the agent writes by hand. Exit 0;
-// 1 when the framework or the base cannot be read or a conflict is left;
+// one line per file — add, update, merge, conflict, delete, same, skip —
+// with the template path it comes from when that differs, then what the
+// agent writes by hand. Exit 0; 1 when the framework or the base cannot be
+// read, the config names what the framework lacks, or a conflict is left;
 // 2 on a usage error.
 //
 // It implements **Materialize** of TEMP_BOOTSTRAP.md and the steps of
@@ -163,6 +169,12 @@ func plan(root, from string, cfg config.Config) (*planned, error) {
 	if err != nil {
 		return nil, err
 	}
+	if tplCfg.Version < cfg.Version {
+		return nil, fmt.Errorf("the framework at %s is version %d, older than this project's %d", from, tplCfg.Version, cfg.Version)
+	}
+	if err := known(cfg, tplCfg, theirs); err != nil {
+		return nil, err
+	}
 	p := &planned{from: cfg.Version, to: tplCfg.Version, base: "none", templates: theirs}
 	base := tree{}
 	if cfg.Version > 0 {
@@ -176,6 +188,9 @@ func plan(root, from string, cfg config.Config) (*planned, error) {
 	m := newMapper(cfg, tplCfg)
 	ourSide := m.project(theirs)
 	baseSide := m.project(base)
+	for _, f := range m.ambiguousFiles() {
+		p.byHand = append(p.byHand, "review "+f+": it names a perspective kind that maps to no single perspective of this project")
+	}
 	paths := map[mapped]bool{}
 	for k := range ourSide {
 		paths[k] = true
@@ -216,7 +231,7 @@ func plan(root, from string, cfg config.Config) (*planned, error) {
 		default:
 			switch {
 			case !hasO:
-				a.verb, a.note = "missing", "removed by the project; left absent"
+				a.verb, a.want, a.note = "add", &t, "the config keeps it; it comes back"
 			case o.equal(t):
 				a.verb = "same"
 			case o.equal(b):
@@ -275,7 +290,7 @@ func (p *planned) render() string {
 		b.WriteString("\n")
 	}
 	var summary []string
-	for _, v := range []string{"add", "update", "merge", "conflict", "delete", "missing", "same", "skip"} {
+	for _, v := range []string{"add", "update", "merge", "conflict", "delete", "same", "skip"} {
 		if counts[v] > 0 {
 			summary = append(summary, fmt.Sprintf("%d %s", counts[v], v))
 		}
@@ -291,6 +306,15 @@ func (p *planned) render() string {
 
 // apply writes the plan and records the version; it returns the conflicts left.
 func (p *planned) apply(root string) (int, error) {
+	file := filepath.Join(root, filepath.FromSlash(config.File))
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		return 0, err
+	}
+	m := versionRe.FindSubmatchIndex(raw)
+	if m == nil {
+		return 0, errors.New(config.File + ": no \"version\" field to record")
+	}
 	conflicts := 0
 	for _, a := range p.actions {
 		abs := filepath.Join(root, filepath.FromSlash(a.path))
@@ -324,16 +348,9 @@ func (p *planned) apply(root string) (int, error) {
 			if err := os.Remove(abs); err != nil && !os.IsNotExist(err) {
 				return conflicts, err
 			}
+			for dir := filepath.Dir(abs); dir != root && os.Remove(dir) == nil; dir = filepath.Dir(dir) {
+			}
 		}
-	}
-	file := filepath.Join(root, filepath.FromSlash(config.File))
-	raw, err := os.ReadFile(file)
-	if err != nil {
-		return conflicts, err
-	}
-	m := versionRe.FindSubmatchIndex(raw)
-	if m == nil {
-		return conflicts, errors.New(config.File + ": no \"version\" field to record")
 	}
 	out := append([]byte(nil), raw[:m[2]]...)
 	out = append(out, strconv.Itoa(p.to)...)
@@ -349,6 +366,8 @@ type mapper struct {
 	active   bool                // some token changes
 	skipped  []skipped
 	seen     map[string]bool // template paths already reported as skipped
+	loose    [][]byte        // kind tokens with no single mapping, left in place
+	flagged  map[string]bool // template .md files holding a loose token
 }
 
 type skipped struct{ path, note string }
@@ -357,7 +376,11 @@ type skipped struct{ path, note string }
 type mapped struct{ path, from string }
 
 func newMapper(cfg, tpl config.Config) *mapper {
-	m := &mapper{cfg: cfg, tpl: tpl, kinds: map[string][]string{}, seen: map[string]bool{}}
+	m := &mapper{cfg: cfg, tpl: tpl, kinds: map[string][]string{}, seen: map[string]bool{}, flagged: map[string]bool{}}
+	if len(cfg.Perspectives) == 0 {
+		cfg.Perspectives = tpl.Perspectives
+		m.cfg.Perspectives = tpl.Perspectives
+	}
 	for _, k := range tpl.Perspectives {
 		m.kinds[k.Name] = nil
 	}
@@ -375,6 +398,8 @@ func newMapper(cfg, tpl config.Config) *mapper {
 	for kind, names := range m.kinds {
 		if len(names) == 1 {
 			add(tpl.Paths.Specs+"/"+kind+"/", cfg.Paths.Specs+"/"+names[0]+"/")
+		} else {
+			m.loose = append(m.loose, []byte(tpl.Paths.Specs+"/"+kind+"/"))
 		}
 	}
 	add(tpl.Paths.Technical+"/", cfg.Paths.Technical+"/")
@@ -398,6 +423,11 @@ func (m *mapper) project(t tree) map[mapped]entry {
 		}
 		e := t[p]
 		if strings.HasSuffix(p, ".md") && e.link == "" {
+			for _, tok := range m.loose {
+				if bytes.Contains(e.data, tok) {
+					m.flagged[p] = true
+				}
+			}
 			e.data = m.replace(e.data)
 		}
 		for _, target := range targets {
@@ -462,6 +492,45 @@ func (m *mapper) replace(text []byte) []byte {
 			i++
 		}
 	}
+	return out
+}
+
+// ambiguousFiles lists the template .md files that name a kind with no
+// single perspective, sorted.
+func (m *mapper) ambiguousFiles() []string {
+	out := make([]string, 0, len(m.flagged))
+	for f := range m.flagged {
+		out = append(out, f)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// known refuses a from the framework does not ship and a skill it does not have.
+func known(cfg, tpl config.Config, theirs tree) error {
+	kinds := map[string]bool{}
+	for _, k := range tpl.Perspectives {
+		kinds[k.Name] = true
+	}
+	for _, ps := range cfg.Perspectives {
+		if ps.From != "" && !kinds[ps.From] {
+			return fmt.Errorf("perspective %s: from %q is no kind the framework ships (%s)", ps.Name, ps.From, strings.Join(sortedKinds(kinds), ", "))
+		}
+	}
+	for _, s := range cfg.Skills {
+		if _, ok := theirs[".agents/skills/"+s+"/SKILL.md"]; !ok {
+			return fmt.Errorf("skill %s is not in the framework", s)
+		}
+	}
+	return nil
+}
+
+func sortedKinds(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
 	return out
 }
 
