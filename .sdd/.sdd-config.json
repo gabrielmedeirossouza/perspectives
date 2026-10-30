@@ -1,10 +1,11 @@
 {
   "version": 9,
   "remote": "https://github.com/gabrielmedeirossouza/perspectives.git",
+  "product": "Ledger: a personal finance web app where a member tracks accounts, transactions, and budgets",
   "paths": { "specs": "specs", "src": "src", "technical": "src/specs" },
   "perspectives": [
     { "name": "business", "from": "business" },
-    { "name": "user", "from": "user" },
+    { "name": "member", "from": "user" },
     { "name": "operator", "from": "operator" }
   ]
 }

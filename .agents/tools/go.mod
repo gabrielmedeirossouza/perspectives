@@ -1,3 +1,3 @@
-module framework
+module tools
 
 go 1.22

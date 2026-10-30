@@ -30,7 +30,7 @@ $ARGUMENTS
 <name> ::= lower kebab-case name of a file in .sdd/brainstorming/
 ```
 
-Examples: `/sdd-spec add invite expiry`; `/sdd-spec user/home:empty list state`; `/sdd-spec operator/release:who may promote to production`; `/sdd-spec remove invite-by-link`; `/sdd-spec brainstorming`; `/sdd-spec brainstorming:invite-expiry`.
+Examples: `/sdd-spec add invite expiry`; `/sdd-spec member/home:empty list state`; `/sdd-spec operator/release:who may promote to production`; `/sdd-spec remove invite-by-link`; `/sdd-spec brainstorming`; `/sdd-spec brainstorming:invite-expiry`.
 
 The argument is a **request**. Path and slug are optional; locate files under `specs/` from the text. **No argument = stop.** Do not infer the target from a prior session or a git branch.
 
