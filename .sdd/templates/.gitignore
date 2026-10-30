@@ -1,0 +1,16 @@
+# Secrets: only the *.example templates are tracked
+.env
+.env.*
+!.env.example
+*.env
+!*.env.example
+
+# Prototypes: worktrees and manifests stay local
+.sdd/prototypes/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~

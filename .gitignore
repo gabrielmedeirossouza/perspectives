@@ -1,14 +1,5 @@
-# Segredos de ambiente — só entram no git os templates *.example
-.env
-.env.*
-!.env.example
-*.env
-!*.env.example
-
-node_modules/
-
-# Sandboxes de protótipo — worktrees e manifestos ficam locais
-.sdd/prototypes/
+# Sandboxes: git worktrees, one branch each; the brief beside them is tracked
+.sdd/sandbox/*/
 
 # OS / editor
 .DS_Store

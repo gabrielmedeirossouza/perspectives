@@ -1,5 +1,6 @@
 #!/bin/sh
-# Refresh and stage the .metadata.json of every node holding a staged file.
-# The logic is .agents/tools/metadata; this shim is only the entry point git runs,
+# Guard the framework before every commit: vet and test both Go modules and,
+# on main, bump the version in .sdd/templates/.sdd/.sdd-config.json and stage it.
+# The logic is .agents/tools/guard; this shim is only the entry point git runs,
 # from the root of the working tree. Enable once per clone: git config core.hooksPath .githooks
-exec go run -C .agents/tools ./metadata --root "$PWD" --staged
+exec go run -C .agents/tools ./guard --root "$PWD"

@@ -1,22 +1,7 @@
 # Tools
 
-Procedures agents turned into code: the law of this folder and the catalog of what exists. When to reuse or create a tool is in the root `AGENTS.md`.
-
-## Contract
-
-- Go, standard library only: one module at `.agents/tools/go.mod`, no dependency, no `go.sum` entry, no committed binary. Go 1.22 or newer.
-- One directory per tool: `.agents/tools/<name>/main.go`, `<name>` in lower kebab-case. Code two tools share lives in `.agents/tools/internal/`.
-- Run from the repository root as `go run -C .agents/tools ./<name> [flags]` (`-C` resolves against the working directory). A tool resolves the repository root by walking up from its working directory to the directory that holds `.sdd/.sdd-config.json`; `--root <dir>`, absolute, overrides it. Paths it takes and prints are relative to that root. Where the product specs, the technical specs, and the code live is the `paths` of that file (**Working files** in the root `AGENTS.md`); a tool never hardcodes those roots.
-- Read-only, with one exception: `metadata` writes `.metadata.json` and nothing else. No other tool writes; the skill that owns a write performs it.
-- `main.go` opens with a comment: the question the tool answers, its flags, and its output.
-- Output is plain text an agent reads as is. Exit 0 with the answer; non-zero with the reason on stderr when it cannot answer (`go run` reports every failure as 1).
-- A tool that implements a rule follows it: where they disagree, the rule wins and the tool is fixed in the same session. A tool that parses a format defined in an `AGENTS.md` changes in the same session as that format.
-- `go vet ./...` and `go test ./...` in `.agents/tools` are green before a tool is committed. Tests sit beside the code they cover, standard `testing` only.
-- Obsolete → delete the directory and its catalog row.
-
-## Catalog
+Tools of the framework repository itself. The templates' tools live in `.sdd/templates/.agents/tools/`, and their law — Go, standard library only, one directory per tool, a comment that opens `main.go` with the question, flags, and output, plain-text output, tests beside the code, `go vet` and `go test` green before a commit — applies here too.
 
 | Tool | Answers | Usage |
 |------|---------|-------|
-| `metadata` | Does the `.metadata.json` of each node match its content? It also writes it: `--write` refreshes a node's own hash and rules, `--sync <dir>` also records the current version of its sources, `--approve <dir>` adds one approval of `/sdd-audit` to a code node's `audited`, `--staged` serves the pre-commit hook | `go run -C .agents/tools ./metadata [--write \| --sync \| --approve \| --staged] [dir...]` |
-| `pending` | What work is pending, for whom: the specs `/sdd-design` owes, the code `/sdd-implement` owes with the rules that changed, the gaps `TODO.md` parks, the next `/sdd-implement continue` batch, the code nodes `/sdd-audit` owes — with `--audit`, the dossier a judge needs for each — and the drift | `go run -C .agents/tools ./pending [--batch \| --audit [--all] [dir...]]` |
+| `guard` | Is this commit of the framework sound, and which version does it make? Vets and tests the templates' module and this one; on `main`, increments `version` in `.sdd/templates/.sdd/.sdd-config.json` and stages it. The pre-commit hook runs it; `--check` only tests and prints the version | `go run -C .agents/tools ./guard [--check] [--root <dir>]` |

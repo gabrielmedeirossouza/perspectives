@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "remote": "https://github.com/gabrielmedeirossouza/perspectives.git",
+  "paths": { "specs": "specs", "src": "src", "technical": "src/specs" },
+  "perspectives": [
+    { "name": "business", "from": "business" },
+    { "name": "user", "from": "user" },
+    { "name": "operator", "from": "operator" }
+  ]
+}
