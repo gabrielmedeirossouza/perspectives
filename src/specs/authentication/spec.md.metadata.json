@@ -1,8 +1,8 @@
 {
-  "version": 1,
+  "version": 2,
   "algorithm": "sha256",
   "hash": "e952e3883af1980624bcf04cb3fb1857b3dfb73397ed2910cc9b51da3c881b10",
-  "modified": "2026-10-30T19:11:18Z",
+  "modified": "2026-10-30T21:17:11Z",
   "rules": {
     "Auth module of the API": "232b78c7f778fae68876684402ebd23c103d2010b3f7adf0357937c5ebabc80b",
     "Auth pages of the web app": "c42492d933521d764a8d0218e005ffd941977c5c65cece9130d038cb0fa59be5",
@@ -16,7 +16,7 @@
   },
   "sources": [
     {
-      "path": "specs/business/authentication",
+      "path": "specs/business/authentication/spec.md",
       "hash": "d1582a91fe2340cd912f7996d232421fb3627b294eb554238528573079cb6f86",
       "rules": {
         "Credentials prove the account": "d21a8f3946af7d8e5ee06fabbc88218d200c6f63562308411820bb133de30538",
@@ -28,7 +28,7 @@
       }
     },
     {
-      "path": "specs/member/authentication",
+      "path": "specs/member/authentication/spec.md",
       "hash": "30437b1c57371efbd7d3be96621c0b0d29869748d53ceb1db2cd207cdc06cc57",
       "rules": {
         "Sign-in page": "a7c5405a5b32c2baa066a20dbb5edb62a1226fc31b812e495d2cb02acafdaaf0",
@@ -39,7 +39,7 @@
       }
     },
     {
-      "path": "src/specs/toolchain",
+      "path": "src/specs/toolchain/spec.md",
       "hash": "eb6c55ddc036d40f99aee5116a53a922e36711b55454b9a060bedb60de03691e",
       "rules": {
         "Fastify as the HTTP server": "f1c16ce3b4cf964edaa12c8f9db17ca356de3e6d16fc70c431dc67530b118baf",

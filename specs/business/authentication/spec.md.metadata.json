@@ -1,8 +1,8 @@
 {
-  "version": 1,
+  "version": 2,
   "algorithm": "sha256",
   "hash": "d1582a91fe2340cd912f7996d232421fb3627b294eb554238528573079cb6f86",
-  "modified": "2026-10-30T19:11:18Z",
+  "modified": "2026-10-30T21:17:11Z",
   "rules": {
     "Credentials prove the account": "d21a8f3946af7d8e5ee06fabbc88218d200c6f63562308411820bb133de30538",
     "Data isolation by account": "e9b466b876d66621d3dd123295d6aec7749acefc4ce1ee323347f1160cfc9da1",

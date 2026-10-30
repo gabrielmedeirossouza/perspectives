@@ -1,15 +1,15 @@
 {
-  "version": 1,
+  "version": 2,
   "algorithm": "sha256",
   "hash": "2b02ad3e4eb0d7ae73ac8f57ca36725d44866e6015a432a18958c4da1cfb6321",
-  "modified": "2026-10-30T19:11:18Z",
+  "modified": "2026-10-30T21:17:11Z",
   "rules": {
     "Home page of the web app": "f5b8e546c2cdf235d542b522971c131862ab57335df0efe894d737e598e501e2",
     "Home route registration": "953006810e10dc2a7c1c7d4ad30dea9e0792661b576a444a3f27aba28b136a86"
   },
   "sources": [
     {
-      "path": "specs/member/home",
+      "path": "specs/member/home/spec.md",
       "hash": "07b28a94019412ed2f7cad148f6516de496104a390e17a0b84c721eec212e0a7",
       "rules": {
         "Home content": "606d53232bb12620de6d7d00555d77701bcfce6f306bfd2aabfb10e05edf1202",
@@ -17,7 +17,7 @@
       }
     },
     {
-      "path": "src/specs/toolchain",
+      "path": "src/specs/toolchain/spec.md",
       "hash": "eb6c55ddc036d40f99aee5116a53a922e36711b55454b9a060bedb60de03691e",
       "rules": {
         "Fastify as the HTTP server": "f1c16ce3b4cf964edaa12c8f9db17ca356de3e6d16fc70c431dc67530b118baf",

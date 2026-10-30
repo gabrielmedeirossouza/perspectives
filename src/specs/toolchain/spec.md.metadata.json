@@ -1,8 +1,8 @@
 {
-  "version": 1,
+  "version": 2,
   "algorithm": "sha256",
   "hash": "eb6c55ddc036d40f99aee5116a53a922e36711b55454b9a060bedb60de03691e",
-  "modified": "2026-10-30T19:11:18Z",
+  "modified": "2026-10-30T21:17:11Z",
   "rules": {
     "Fastify as the HTTP server": "f1c16ce3b4cf964edaa12c8f9db17ca356de3e6d16fc70c431dc67530b118baf",
     "Ignored artifacts": "4eafe15044967cb674276247fb892d1cb8e525a0299a9a033e01791ba1629cb7",

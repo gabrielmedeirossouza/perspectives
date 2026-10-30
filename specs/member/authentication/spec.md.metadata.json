@@ -1,8 +1,8 @@
 {
-  "version": 1,
+  "version": 2,
   "algorithm": "sha256",
   "hash": "30437b1c57371efbd7d3be96621c0b0d29869748d53ceb1db2cd207cdc06cc57",
-  "modified": "2026-10-30T19:11:18Z",
+  "modified": "2026-10-30T21:17:11Z",
   "rules": {
     "Sign-in page": "a7c5405a5b32c2baa066a20dbb5edb62a1226fc31b812e495d2cb02acafdaaf0",
     "Sign-out action": "aa17b7183fb333e2aa453caf594a4b0b0e83c201283a88bd511cf15b37990c86",
