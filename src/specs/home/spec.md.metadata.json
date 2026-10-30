@@ -18,8 +18,9 @@
     },
     {
       "path": "src/specs/toolchain/spec.md",
-      "hash": "eb6c55ddc036d40f99aee5116a53a922e36711b55454b9a060bedb60de03691e",
+      "hash": "d728f0523c2a86eaeac7b7b517ac3a774ea90823f290685ce5144914e48b2542",
       "rules": {
+        "API error codes": "b704b2e69f330cb05c275c2c6e94e2f7234eacd5d971782ca442182683f75d06",
         "Fastify as the HTTP server": "f1c16ce3b4cf964edaa12c8f9db17ca356de3e6d16fc70c431dc67530b118baf",
         "Ignored artifacts": "4eafe15044967cb674276247fb892d1cb8e525a0299a9a033e01791ba1629cb7",
         "Node.js 26 and TypeScript 5": "f4c94dd7052663399125cadf18a0212eb511b07eb073a52b05d5ca5e4dc993bb",

@@ -28,6 +28,10 @@ The root `.gitignore` **must** ignore `node_modules/`, `dist/`, and `*.db` every
 
 The API **must** serve HTTP with `fastify` 5. `src/api/server.ts` **must** export `build(options)` returning the configured Fastify instance, so tests inject requests without a port, and `src/api/main.ts` **must** be the only file that listens: on host `0.0.0.0` and the port of the environment variable `PORT`, 3000 when unset. Every response body is JSON; an error body is `{ "error": "<code>" }` with a snake_case code.
 
+### API error codes
+
+An error the API answers outside an explicit reply of a route **must** carry a fixed code: `404 { "error": "not_found" }` for a route that does not exist, `400 { "error": "invalid" }` for a request body Fastify cannot parse — malformed JSON, an empty body sent as JSON, or a content type other than JSON — and `500 { "error": "internal_error" }` for an unhandled exception.
+
 ### React on Vite
 
 The web app **must** be React 18 on Vite 7, with `react-router` 7 for routes. `src/web/main.tsx` **must** be the entry; a feature's pages live in its directory and register their routes in `src/web/routes.tsx`. The app calls the API through `fetch` with `credentials: "include"`, on the base URL `VITE_API_URL`.
