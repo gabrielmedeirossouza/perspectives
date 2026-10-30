@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "algorithm": "sha256",
+  "hash": "ab9d739399ab335517a821fd596c43099c59d9f7f8cc3b7a8450d314727fd96d",
+  "modified": "2026-10-30T18:45:23Z",
+  "rules": {
+    "Auth module of the API": "232b78c7f778fae68876684402ebd23c103d2010b3f7adf0357937c5ebabc80b",
+    "Auth pages of the web app": "0cfd8e430e62ed0dd99950ea7e17777d0f948eab09005b4cbb4da9b421c1c17b",
+    "Password hashing with scrypt": "09b928e73481ab08ebfb0953a0fe7a5b5159f6c04d8321747a03094f86928fac",
+    "SQLite through node:sqlite": "4a5ece7388df0635b8db4d569d0118e95d7ecdace228ed88dfdf0ed9de4d2897",
+    "Session cookie": "3a97aaca85d01923544f489484d08411a23784bd4300370e59e4932811a1a1ed",
+    "Session endpoint": "586529202c523155e0b2e000123fcbf07ccbf6670749ab0998a60f3e8157b325",
+    "Sign-in endpoint": "35fb8f77d379609bd0e983f502199affa8fa78168857c84cf8bcabc79ff6e4e7",
+    "Sign-out endpoint": "427875e5386424fc0af0cab07324adc9b237a758c3fec2fb4a1a4cc1cdee8120",
+    "Sign-up endpoint": "fb6eedcddbe801627975426838ab1c151a76aa1f44b8cabee769f3dc8badbbe2"
+  },
+  "sources": [
+    {
+      "path": "specs/business/authentication",
+      "hash": "a41060be42bbc022e8da04d82fea76be42c0db793cac3efca88d519eee292ed6",
+      "rules": {
+        "Credentials prove the account": "d21a8f3946af7d8e5ee06fabbc88218d200c6f63562308411820bb133de30538",
+        "Data isolation by account": "e9b466b876d66621d3dd123295d6aec7749acefc4ce1ee323347f1160cfc9da1",
+        "Minimum password length": "02d823834c84642eaed09e6232b5c4e9b05dc240fca5172ce69f573b87f56483",
+        "One account per email": "356cc563d7014bea1cd2c936f8fd4d3896045461467a6a4b9bfa796dda17a0a6",
+        "Session lifetime": "4f0253b5271d1aa99fedfd434d1749608a334d636f27b1b420ce18b11f1f00fc"
+      }
+    },
+    {
+      "path": "specs/member/authentication",
+      "hash": "8a01b341d6c4b3e78420b07525a97d0f011147fda2427fcecfab0d64f7608e68",
+      "rules": {
+        "Sign-in page": "e384a9def8eb6fe5c0678225e4442a6a7c47bac9e195f5b006185311976dc920",
+        "Sign-out action": "a52d2804efeddc530ff89765079d5d52993244b21f7be0dada43cd3abb30ce27",
+        "Sign-up page": "326c58da40ea817636c8701e5324859f3b0adc89a6a2527a34f795c2533e5d88",
+        "Signed-out landing": "4c7f101e5f366d60043957ad518a5195ef9cce15a3872c0b103cd52a0eed3e9e"
+      }
+    },
+    {
+      "path": "src/specs/toolchain",
+      "hash": "e72b02efc296860fdd263e6fb843247cefae1eba0a45eb929b6aad3bdb4f0e69",
+      "rules": {
+        "Fastify as the HTTP server": "18343f25dfdb2ec6acf90b848d7cadcf2e671893f1c2442ae7568b70925ae875",
+        "Ignored artifacts": "4eafe15044967cb674276247fb892d1cb8e525a0299a9a033e01791ba1629cb7",
+        "Node.js 26 and TypeScript 5": "f4c94dd7052663399125cadf18a0212eb511b07eb073a52b05d5ca5e4dc993bb",
+        "One directory per app": "1a1730689899f06d7187f418bdb1a9ebb0aab494ddad4353ff713cf4c1431a3d",
+        "React on Vite": "1295c04af675db4b1295d77efa876b7e857ce9dc3a2105780056403dcee7c0b1",
+        "Vitest as the test runner": "f6f469f140a6c4ef26ce050a5a2c56e6db9ef33dbadbf362629d5a711ea891b2",
+        "npm workspaces under src": "6163422af0120b8d34bafb857d98f6b2d6aed506713ba531b46699399163df02"
+      }
+    }
+  ]
+}
