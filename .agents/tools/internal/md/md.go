@@ -4,6 +4,7 @@
 package md
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
@@ -28,8 +29,8 @@ var (
 	headingRe = regexp.MustCompile(`^(#{1,3})\s+(.+?)\s*$`)
 	atxRe     = regexp.MustCompile(`^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$`)
 	setextRe  = regexp.MustCompile(`^ {0,3}(?:=+|-+)[ \t]*$`)
-	inlineRe  = regexp.MustCompile(`(?:^|[^\\])\]\(\s*(<[^>]*>|[^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)`)
-	refDefRe  = regexp.MustCompile(`^ {0,3}\[[^\]]+\]:\s*(<[^>]*>|\S+)`)
+	inlineRe  = regexp.MustCompile(`(?:^|[^\\])\[((?:\\.|[^\]\\])*)\]\(\s*(<[^>]*>|[^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)`)
+	refDefRe  = regexp.MustCompile(`^ {0,3}\[([^\]^][^\]]*)\]:[ \t]*(<[^>]*>|[^\s<]+)[ \t]*(?:"[^"]*"|'[^']*'|\([^)]*\))?[ \t]*$`)
 )
 
 // Sections returns the headings of level 1–3 outside code fences, in order. A
@@ -103,19 +104,20 @@ func outsideFences(text string) []string {
 
 // Links returns the targets of the links outside code fences and code spans,
 // in order: inline links and images, `[text](target)` with an optional title
-// and `<target>` brackets removed, and reference definitions, `[ref]: target`.
-// An escaped `\]` opens no link.
+// and `<target>` brackets removed, and reference definitions, `[ref]: target`
+// alone on their line — a footnote, `[^1]: text`, is none. An escaped `\[`
+// opens no link. Indented code blocks are read as text.
 func Links(text string) []string {
 	var out []string
 	unbracket := func(t string) string { return strings.TrimSuffix(strings.TrimPrefix(t, "<"), ">") }
 	for _, line := range outsideFences(text) {
 		line = stripCode(line)
 		if m := refDefRe.FindStringSubmatch(line); m != nil {
-			out = append(out, unbracket(m[1]))
+			out = append(out, unbracket(m[2]))
 			continue
 		}
 		for _, m := range inlineRe.FindAllStringSubmatch(line, -1) {
-			out = append(out, unbracket(m[1]))
+			out = append(out, unbracket(m[2]))
 		}
 	}
 	return out
@@ -163,17 +165,28 @@ func stripCode(line string) string {
 
 // Anchors returns the slugs of every heading outside code fences — ATX of any
 // level, indented up to three spaces, closing hashes dropped, and setext — in
-// order.
+// order; a slug already taken gets `-1`, `-2`, … as the host numbers it.
 func Anchors(text string) []string {
 	var out []string
+	seen := map[string]int{}
+	add := func(title string) {
+		s := Slug(title)
+		if n := seen[s]; n > 0 {
+			seen[s] = n + 1
+			s = fmt.Sprintf("%s-%d", s, n)
+		} else {
+			seen[s] = 1
+		}
+		out = append(out, s)
+	}
 	prev := ""
 	for _, line := range outsideFences(text) {
 		switch m := atxRe.FindStringSubmatch(line); {
 		case m != nil:
-			out = append(out, Slug(m[2]))
+			add(m[2])
 			line = ""
 		case setextRe.MatchString(line) && strings.TrimSpace(prev) != "":
-			out = append(out, Slug(strings.TrimSpace(prev)))
+			add(strings.TrimSpace(prev))
 			line = ""
 		}
 		prev = line
