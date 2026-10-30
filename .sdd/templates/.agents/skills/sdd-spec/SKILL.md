@@ -70,4 +70,4 @@ The interview closes the decision with its branches. `CONTEXT.md` is edited in t
 
 Glossary conflict: point at the `CONTEXT.md` entry and the intended wording. Postulate violation: name the P, the passage, the recommended fix.
 
-Out of scope: the law of the folder in a nested `AGENTS.md`; anything under `src/` — technical specs are `/sdd-design`, code is `/sdd-implement`; `.metadata.json` by hand; editing a brainstorm (`/sdd-brainstorming`).
+A perspective is created, renamed, or removed as **Perspectives** of `specs/AGENTS.md` says: its entry in `.sdd/.sdd-config.json`, its directory, its `AGENTS.md` by analogy to the closest shipped kind, its bullet in `specs/PERSPECTIVES.md`, in one session. Out of scope: editing the law of an existing perspective's `AGENTS.md`; anything under `src/` — technical specs are `/sdd-design`, code is `/sdd-implement`; `.metadata.json` by hand; editing a brainstorm (`/sdd-brainstorming`).
