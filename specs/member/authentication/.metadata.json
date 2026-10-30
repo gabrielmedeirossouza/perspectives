@@ -1,12 +1,13 @@
 {
   "version": 1,
   "algorithm": "sha256",
-  "hash": "8a01b341d6c4b3e78420b07525a97d0f011147fda2427fcecfab0d64f7608e68",
-  "modified": "2026-10-30T18:44:12Z",
+  "hash": "30437b1c57371efbd7d3be96621c0b0d29869748d53ceb1db2cd207cdc06cc57",
+  "modified": "2026-10-30T19:11:18Z",
   "rules": {
-    "Sign-in page": "e384a9def8eb6fe5c0678225e4442a6a7c47bac9e195f5b006185311976dc920",
-    "Sign-out action": "a52d2804efeddc530ff89765079d5d52993244b21f7be0dada43cd3abb30ce27",
-    "Sign-up page": "326c58da40ea817636c8701e5324859f3b0adc89a6a2527a34f795c2533e5d88",
-    "Signed-out landing": "4c7f101e5f366d60043957ad518a5195ef9cce15a3872c0b103cd52a0eed3e9e"
+    "Sign-in page": "a7c5405a5b32c2baa066a20dbb5edb62a1226fc31b812e495d2cb02acafdaaf0",
+    "Sign-out action": "aa17b7183fb333e2aa453caf594a4b0b0e83c201283a88bd511cf15b37990c86",
+    "Sign-up page": "1c816eb7cb7b147e96254c53384889033ac9dde26cf33ef3f8a6e32fbc8dfbe0",
+    "Signed-out landing": "4c7f101e5f366d60043957ad518a5195ef9cce15a3872c0b103cd52a0eed3e9e",
+    "Unexpected failure message": "5ff0f3b4598d9d618829a4686e556a994d7cf6f1cd61e2f0dfb99e994e882ab6"
   }
 }
