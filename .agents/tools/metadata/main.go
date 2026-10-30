@@ -1,18 +1,27 @@
 // metadata: does the .metadata.json of each node reflect its content? It also
-// writes it, and records which version of each source a node validated against.
+// writes it, records which version of each source a node validated against,
+// and records the approvals of /audit on a code node.
 //
-// Usage: go run -C .agents/tools ./metadata [--write | --sync | --staged] [--root <dir>] [dir...]
+// Usage: go run -C .agents/tools ./metadata [--write | --sync | --approve | --staged] [--root <dir>] [dir...]
 //
-//	dir...        root-relative node directories (default: every node; --sync requires them)
+//	dir...        root-relative node directories (default: every node; --sync
+//	              and --approve require them)
 //	(no flag)     check: list every drift of the targeted nodes; fail if any
 //	--write       recompute hash and rules; move modified only when the hash
+//	              changed; on a code node, return audited to 0 when the hash
 //	              changed; create the file for a perspectives directory that
 //	              holds spec.md; never touch sources
 //	--sync        --write, then record the current hash and rules of every
-//	              source; refuses a dangling or invalid source, one whose own
-//	              metadata has drift, a code node whose sources do not match
-//	              the perspective nodes its technical specs serve, and a code
-//	              node that waits on /design
+//	              source, returning audited to 0 when a source is recorded for
+//	              the first time; refuses a dangling or invalid source, one
+//	              whose own metadata has drift, a code node with no technical
+//	              spec or whose sources do not match the perspective nodes its
+//	              technical specs serve, and a code node that waits on /design
+//	--approve     --write, then add one approval to audited: a judge confirmed
+//	              the sources of the code node; refuses a node that is no code
+//	              node, has drift, changed since the judge read it, or is an
+//	              /implement unit (stale, dangling, missing a served
+//	              perspective)
 //	--staged      --write on every node holding a staged file, then git add
 //	              the metadata of every such node; the pre-commit hook runs
 //	              this. It hashes the working tree, so a partially staged file
@@ -20,9 +29,10 @@
 //	--root <dir>  repository root, absolute (default: nearest directory at or
 //	              above the working directory with AGENTS.md and perspectives/)
 //
-// Output, plain text, one line per node: ok, written, synced, unchanged, or
-// the drift found. Exit 0 when done; 1 when a check fails or a sync is
-// refused; 2 on a usage error (go run reports every failure as 1).
+// Output, plain text, one line per node: ok, written, synced, approved (with
+// the count), unchanged, or the drift found. Exit 0 when done; 1 when a check
+// fails or a sync or approval is refused; 2 on a usage error (go run reports
+// every failure as 1).
 //
 // It implements **Metadata** of the root AGENTS.md; that section wins over it.
 package main
@@ -40,12 +50,12 @@ import (
 	"tools/internal/repo"
 )
 
-const usage = "usage: go run -C .agents/tools ./metadata [--write | --sync | --staged] [--root <dir>] [dir...]"
+const usage = "usage: go run -C .agents/tools ./metadata [--write | --sync | --approve | --staged] [--root <dir>] [dir...]"
 
 type options struct {
-	write, sync, staged bool
-	root                string
-	dirs                []string
+	write, sync, approve, staged bool
+	root                         string
+	dirs                         []string
 }
 
 func main() {
@@ -87,6 +97,16 @@ func main() {
 			written, err := graph.Save(n, m)
 			check(err)
 			report(written, "synced", file)
+		case opts.approve:
+			m, err := g.Approve(n, now)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "metadata: %v\n", err)
+				failed = true
+				continue
+			}
+			_, err = graph.Save(n, m)
+			check(err)
+			fmt.Printf("approved %s (%d)\n", file, *m.Audited)
 		case opts.write || opts.staged:
 			m, err := graph.Refresh(n, now)
 			if err != nil {
@@ -130,6 +150,8 @@ func parse(args []string) options {
 			o.write = true
 		case a == "--sync":
 			o.sync = true
+		case a == "--approve":
+			o.approve = true
 		case a == "--staged":
 			o.staged = true
 		case a == "--root" && i+1 < len(args):
@@ -141,18 +163,31 @@ func parse(args []string) options {
 			o.dirs = append(o.dirs, a)
 		}
 	}
-	if o.staged && (o.sync || len(o.dirs) > 0) {
-		fail("--staged takes no --sync and no dir\n"+usage, 2)
+	modes := 0
+	for _, on := range []bool{o.write, o.sync, o.approve, o.staged} {
+		if on {
+			modes++
+		}
+	}
+	if modes > 1 {
+		fail("--write, --sync, --approve, and --staged exclude each other\n"+usage, 2)
+	}
+	if o.staged && len(o.dirs) > 0 {
+		fail("--staged takes no dir\n"+usage, 2)
 	}
 	if o.sync && len(o.dirs) == 0 {
 		fail("--sync takes the node directories to sync; it never syncs every node\n"+usage, 2)
 	}
+	if o.approve && len(o.dirs) == 0 {
+		fail("--approve takes the code node directories a judge approved; it never approves every node\n"+usage, 2)
+	}
 	return o
 }
 
-// resolve maps root-relative (or absolute) directories to nodes.
+// resolve maps root-relative (or absolute) directories to nodes, each once.
 func resolve(g *graph.Graph, root string, dirs []string) ([]*graph.Node, error) {
 	var out []*graph.Node
+	seen := map[*graph.Node]bool{}
 	for _, d := range dirs {
 		rel := d
 		if filepath.IsAbs(d) {
@@ -163,7 +198,10 @@ func resolve(g *graph.Graph, root string, dirs []string) ([]*graph.Node, error) 
 		if n == nil {
 			return nil, fmt.Errorf("`%s` is no node: a perspectives directory holds %s; a src directory holds %s with its sources", rel, meta.SpecFile, meta.FileName)
 		}
-		out = append(out, n)
+		if !seen[n] {
+			seen[n] = true
+			out = append(out, n)
+		}
 	}
 	return out, nil
 }

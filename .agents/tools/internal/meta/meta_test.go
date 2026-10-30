@@ -110,3 +110,21 @@ func TestReadRefusesUnknownFieldsAndVersions(t *testing.T) {
 		t.Fatalf("skeleton refused: %v %+v", err, m)
 	}
 }
+
+func TestEncodeKeepsAuditedZeroBetweenModifiedAndRules(t *testing.T) {
+	zero := 0
+	a, _ := Encode(&Metadata{Version: 1, Algorithm: "sha256", Hash: "h", Modified: "m", Audited: &zero, Rules: map[string]string{"r": "1"}})
+	s := string(a)
+	if !strings.Contains(s, `"audited": 0`) || strings.Index(s, `"modified"`) > strings.Index(s, `"audited"`) || strings.Index(s, `"audited"`) > strings.Index(s, `"rules"`) {
+		t.Fatalf("encoding = %s", s)
+	}
+	b, _ := Encode(&Metadata{Version: 1, Algorithm: "sha256", Hash: "h", Modified: "m"})
+	if strings.Contains(string(b), "audited") {
+		t.Fatalf("audited rendered on a node without it: %s", b)
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, FileName), []byte(`{"version": 1, "hash": "h", "audited": 2}`), 0o644)
+	if m, err := Read(dir); err != nil || m.Audited == nil || *m.Audited != 2 {
+		t.Fatalf("audited not read: %v %+v", err, m)
+	}
+}

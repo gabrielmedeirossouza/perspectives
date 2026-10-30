@@ -1,10 +1,14 @@
 // pending: what work is pending, for whom — the specs /design owes, the code
-// /implement owes, and the next /implement continue batch.
+// /implement owes, the next /implement continue batch, and the code nodes
+// /audit owes, with the dossier a judge needs.
 //
-// Usage: go run -C .agents/tools ./pending [--batch] [--root <dir>]
+// Usage: go run -C .agents/tools ./pending [--batch | --audit [--all] [dir...]] [--root <dir>]
 //
 //	--batch       print only the next batch (or what /design owes when nothing
 //	              can be implemented) and the drift
+//	--audit       print the dossier of every code node that owes an audit — or
+//	              of the code nodes at or under each dir — and the drift
+//	--all         with --audit, also the nodes already approved or parked
 //	--root <dir>  repository root, absolute (default: nearest directory at or
 //	              above the working directory with AGENTS.md and perspectives/)
 //
@@ -21,20 +25,29 @@
 //	              a ## Design gap holds it) and whether it runs or waits
 //	# Next batch  the units /implement continue runs now, at most 5, then the
 //	              units that wait and why
+//	# Audit       code nodes with no approval at their current content: owed
+//	              to /audit, blocked by drift, after /implement, or parked
+//	              under ## Audit gap. With --audit, one dossier per node:
+//	              files, listed technical and perspective specs, candidate
+//	              technical specs not listed (naming the directory, global,
+//	              the rest), and the perspective corrections that follow
 //	# Drift       metadata that does not match its content, missing or orphan
-//	              metadata, invalid sources, files under src/ outside any node,
-//	              duplicate titles, cycles, gaps in TODO.md that match no rule
+//	              metadata, invalid sources, a code node with no technical
+//	              spec, files under src/ outside any node, duplicate titles,
+//	              cycles, gaps in TODO.md that match no rule or node
 //
 // With nothing pending it prints "No pending work." and the drift. Exit 0
 // with the answer; non-zero with the reason on stderr.
 //
-// It implements **Continue** of .agents/skills/implement/SKILL.md over the
-// states of **Metadata** in the root AGENTS.md; they win over it.
+// It implements **Continue** of .agents/skills/implement/SKILL.md and
+// **Inventory** of .agents/skills/audit/SKILL.md over the states of
+// **Metadata** in the root AGENTS.md; they win over it.
 package main
 
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"tools/internal/graph"
@@ -42,24 +55,34 @@ import (
 )
 
 const (
-	usage = "usage: go run -C .agents/tools ./pending [--batch] [--root <dir>]"
+	usage = "usage: go run -C .agents/tools ./pending [--batch | --audit [--all] [dir...]] [--root <dir>]"
 	cap   = 5
 )
 
 func main() {
-	batch := false
+	batch, audit, all := false, false, false
 	root := ""
+	var dirs []string
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
 		switch {
 		case args[i] == "--batch":
 			batch = true
+		case args[i] == "--audit":
+			audit = true
+		case args[i] == "--all":
+			all = true
 		case args[i] == "--root" && i+1 < len(args):
 			i++
 			root = args[i]
-		default:
+		case strings.HasPrefix(args[i], "-"):
 			fail("unknown argument: "+args[i]+"\n"+usage, 2)
+		default:
+			dirs = append(dirs, args[i])
 		}
+	}
+	if (batch && audit) || (!audit && (all || len(dirs) > 0)) {
+		fail("--all and dir... go with --audit, which excludes --batch\n"+usage, 2)
 	}
 	dir, err := repo.Root(root)
 	if err != nil {
@@ -69,7 +92,42 @@ func main() {
 	if err != nil {
 		fail(err.Error(), 1)
 	}
+	if audit {
+		targets, err := codeNodes(g, dirs)
+		if err != nil {
+			fail(err.Error(), 1)
+		}
+		fmt.Println(renderAudit(g, all, targets))
+		return
+	}
 	fmt.Println(render(g, batch))
+}
+
+// codeNodes resolves dirs to the code nodes at or under each; every code node
+// when none is given.
+func codeNodes(g *graph.Graph, dirs []string) ([]*graph.Node, error) {
+	if len(dirs) == 0 {
+		return g.CodeNodesUnder("src"), nil
+	}
+	seen := map[*graph.Node]bool{}
+	var out []*graph.Node
+	for _, d := range dirs {
+		if filepath.IsAbs(d) {
+			d = repo.Rel(g.Root, d)
+		}
+		rel := repo.Clean(d)
+		nodes := g.CodeNodesUnder(rel)
+		if len(nodes) == 0 {
+			return nil, fmt.Errorf("no code node at or under `%s`", rel)
+		}
+		for _, n := range nodes {
+			if !seen[n] {
+				seen[n] = true
+				out = append(out, n)
+			}
+		}
+	}
+	return out, nil
 }
 
 func render(g *graph.Graph, batchOnly bool) string {
@@ -118,6 +176,15 @@ func render(g *graph.Graph, batchOnly bool) string {
 		}
 		out = append(out, "")
 	}
+	if !batchOnly {
+		if audit := auditLines(g.Audits()); len(audit) > 0 {
+			out = append(out, "# Audit", "")
+			for _, line := range audit {
+				out = append(out, "- "+line)
+			}
+			out = append(out, "")
+		}
+	}
 	if len(drift) > 0 {
 		out = append(out, "# Drift", "")
 		for _, line := range drift {
@@ -125,6 +192,137 @@ func render(g *graph.Graph, batchOnly bool) string {
 		}
 	}
 	return strings.TrimRight(strings.Join(out, "\n"), "\n")
+}
+
+// auditLines names every code node with no approval at its current content
+// and where it stands: owed, blocked, after /implement, or parked.
+func auditLines(states []graph.AuditState) []string {
+	var out []string
+	for _, s := range states {
+		if s.Audited > 0 {
+			continue
+		}
+		out = append(out, standing(s, "owes an audit"))
+	}
+	return out
+}
+
+// standing renders one node's audit standing after its path: blocking drift
+// first, then a parked gap, then the /implement unit.
+func standing(s graph.AuditState, owed string) string {
+	switch {
+	case len(s.Blocked) > 0:
+		return fmt.Sprintf("`%s` %s — blocked: %s", s.Node.Rel, owed, strings.Join(s.Blocked, "; "))
+	case s.Parked != "":
+		return fmt.Sprintf("`%s` parked: %s (/design)", s.Node.Rel, s.Parked)
+	case s.Unit != "":
+		return fmt.Sprintf("`%s` %s — after /implement: %s", s.Node.Rel, owed, s.Unit)
+	}
+	return fmt.Sprintf("`%s` %s (/audit)", s.Node.Rel, owed)
+}
+
+// renderAudit prints the standing of the targeted code nodes and a dossier
+// for each one a judge reads now, then the drift.
+func renderAudit(g *graph.Graph, all bool, targets []*graph.Node) string {
+	var lines, dossiers []string
+	for _, n := range targets {
+		s := g.AuditOf(n)
+		judge := s.Owed() || (all && len(s.Blocked) == 0 && s.Unit == "")
+		switch {
+		case judge:
+			dossiers = append(dossiers, dossier(g.Dossier(n))...)
+		case len(s.Blocked) > 0 || s.Unit != "" || s.Parked != "":
+			lines = append(lines, standing(s, "not judged"))
+		default:
+			lines = append(lines, fmt.Sprintf("`%s` audited %d; skipped (--all re-audits)", n.Rel, s.Audited))
+		}
+	}
+	var out []string
+	if len(lines) == 0 && len(dossiers) == 0 {
+		out = append(out, "No audit owed.")
+	} else {
+		out = append(out, "# Audit", "")
+		for _, line := range lines {
+			out = append(out, "- "+line)
+		}
+		if len(lines) > 0 {
+			out = append(out, "")
+		}
+		out = append(out, dossiers...)
+	}
+	if drift := g.Drift(); len(drift) > 0 {
+		out = append(out, "# Drift", "")
+		for _, line := range drift {
+			out = append(out, "- "+line)
+		}
+	}
+	return strings.TrimRight(strings.Join(out, "\n"), "\n")
+}
+
+// dossier renders what a judge needs about one code node.
+func dossier(d graph.Dossier) []string {
+	out := []string{fmt.Sprintf("## `%s` — audited %d", d.State.Node.Rel, d.State.Audited), ""}
+	if d.State.Parked != "" {
+		out = append(out, "Parked: "+d.State.Parked+" (/design)", "")
+	}
+	out = append(out, "Files:")
+	out = append(out, bullets(d.Files)...)
+	out = append(out, "", "Listed technical specs:")
+	var tech []string
+	for _, t := range d.Technical {
+		line := "`" + t.Rel + "`"
+		if len(t.Order) > 0 {
+			line += ": " + quoted(t.Order)
+		}
+		tech = append(tech, line)
+	}
+	out = append(out, bullets(tech)...)
+	out = append(out, "", "Listed perspective specs:")
+	var persp []string
+	for _, p := range d.Perspectives {
+		persp = append(persp, "`"+p.Rel+"`")
+	}
+	out = append(out, bullets(persp)...)
+	out = append(out, "", "Candidates:")
+	var cands []string
+	for _, c := range d.Candidates {
+		var why []string
+		if c.Names {
+			why = append(why, "names this directory")
+		}
+		if c.Global {
+			why = append(why, "global")
+		}
+		if c.Purpose != "" {
+			why = append(why, c.Purpose)
+		}
+		cands = append(cands, "`"+c.Node.Rel+"` — "+strings.Join(why, "; "))
+	}
+	out = append(out, bullets(cands)...)
+	if len(d.DropPerspectives) > 0 {
+		out = append(out, "", "Perspectives to drop:")
+		out = append(out, bullets(d.DropPerspectives)...)
+	}
+	return append(out, "")
+}
+
+func bullets(items []string) []string {
+	if len(items) == 0 {
+		return []string{"- none"}
+	}
+	out := make([]string, len(items))
+	for i, s := range items {
+		out[i] = "- " + s
+	}
+	return out
+}
+
+func quoted(titles []string) string {
+	q := make([]string, len(titles))
+	for i, t := range titles {
+		q[i] = fmt.Sprintf("%q", t)
+	}
+	return strings.Join(q, ", ")
 }
 
 // list renders units numbered, each with its rules: run, wait, or park per line.

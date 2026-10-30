@@ -11,11 +11,13 @@ import (
 )
 
 // Gap is one item parked in perspectives/TODO.md under ## Spec gap (a product
-// rule /design cannot design against) or ## Design gap (a rule /implement
-// cannot implement). Shape: `- **<title>** (`<owner>`) <reason>`, with an
-// optional leading `[ ]` tolerated.
+// rule /design cannot design against), ## Design gap (a rule /implement
+// cannot implement), or ## Audit gap (a code node no technical spec governs).
+// Shape: `- **<title>** (`<owner>`) <reason>`, with an optional leading `[ ]`
+// tolerated. An audit gap's title names what the missing spec would decide
+// and its owner is the code node.
 type Gap struct {
-	Heading string // "spec" or "design"
+	Heading string // "spec", "design", or "audit"
 	Title   string
 	Node    string // root-relative node directory the owner names
 	Reason  string
@@ -39,6 +41,8 @@ func loadGaps(root string) ([]Gap, []string) {
 			heading = "spec"
 		case "design gap":
 			heading = "design"
+		case "audit gap":
+			heading = "audit"
 		}
 		if s.Level != 2 || heading == "" {
 			continue
@@ -53,7 +57,7 @@ func loadGaps(root string) ([]Gap, []string) {
 				continue
 			}
 			owner := cleanRel(m[2])
-			if !strings.HasPrefix(owner, "src/") && !strings.HasPrefix(owner, "perspectives/") {
+			if owner != "src" && !strings.HasPrefix(owner, "src/") && !strings.HasPrefix(owner, "perspectives/") {
 				owner = "perspectives/" + owner
 			}
 			reason := strings.TrimRight(strings.TrimSpace(m[3]), ".")
@@ -97,8 +101,9 @@ func (g *Graph) park(u Unit) Unit {
 	return u
 }
 
-// unmatchedGaps lists the gaps that park no rule: a design gap matching no
-// pending rule, a spec gap matching no rule of the node it names.
+// unmatchedGaps lists the gaps that park nothing: a design gap matching no
+// pending rule, a spec gap matching no rule of the node it names, an audit
+// gap naming no code node that owes an audit.
 func (g *Graph) unmatchedGaps() []string {
 	g.Units() // marks design gaps
 	var d []string
@@ -112,6 +117,11 @@ func (g *Graph) unmatchedGaps() []string {
 			n := g.byRel[gap.Node]
 			if n == nil || n.Rules[gap.Title] == "" {
 				d = append(d, fmt.Sprintf("perspectives/TODO.md: spec gap %q (`%s`) matches no rule", gap.Title, gap.Node))
+			}
+		case "audit":
+			n := g.byRel[gap.Node]
+			if n == nil || n.Kind != Code || auditedOf(n) > 0 {
+				d = append(d, fmt.Sprintf("perspectives/TODO.md: audit gap %q (`%s`) names no code node that owes an audit", gap.Title, gap.Node))
 			}
 		}
 	}

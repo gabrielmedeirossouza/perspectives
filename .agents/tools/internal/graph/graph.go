@@ -1,7 +1,8 @@
 // Package graph loads every node under perspectives/ and src/, computes the
 // current hash and rules of each, resolves the sources they list, reads the
 // gaps parked in perspectives/TODO.md, and derives the states of **Metadata**
-// in the root AGENTS.md: drift, stale, dangling, unconsumed, fresh, waits.
+// in the root AGENTS.md: drift, stale, dangling, unconsumed, fresh, waits — and
+// the audit standing of each code node (audit.go).
 package graph
 
 import (
@@ -71,6 +72,9 @@ type Node struct {
 	Sources []*Edge // one per Meta.Sources entry, in order
 	content []string
 }
+
+// Files lists the node's content, paths relative to the node, sorted.
+func (n *Node) Files() []string { return append([]string(nil), n.content...) }
 
 // Edge is one source a node lists.
 type Edge struct {
@@ -390,47 +394,98 @@ func (g *Graph) missing(c *Node) []*Node {
 	return out
 }
 
+// finding is one drift line; blocking when a judge cannot read the node
+// until it is fixed (its content or metadata is not what it claims).
+type finding struct {
+	msg      string
+	blocking bool
+}
+
 // NodeDrift lists what is wrong with n's own metadata: missing, unreadable,
 // not matching the content, a spec-less perspective or technical node, a
-// duplicate title, a source the node may not list, or a perspective node the
-// code node lists that none of its technical specs serves.
+// duplicate title, a source the node may not list, a code node that lists no
+// technical spec, or a perspective node the code node lists that none of its
+// technical specs serves.
 func (g *Graph) NodeDrift(n *Node) []string {
 	var d []string
+	for _, f := range g.findings(n) {
+		d = append(d, f.msg)
+	}
+	return d
+}
+
+func (g *Graph) findings(n *Node) []finding {
+	var d []finding
+	block := func(msg string) { d = append(d, finding{msg, true}) }
+	warn := func(msg string) { d = append(d, finding{msg, false}) }
 	file := n.Rel + "/" + meta.FileName
 	if msg := specless(n); msg != "" {
-		d = append(d, msg)
+		block(msg)
 	}
 	if n.RuleErr != nil {
-		d = append(d, fmt.Sprintf("`%s/%s`: %v", n.Rel, meta.SpecFile, n.RuleErr))
+		block(fmt.Sprintf("`%s/%s`: %v", n.Rel, meta.SpecFile, n.RuleErr))
 	}
 	switch {
 	case !n.HasMeta:
-		d = append(d, fmt.Sprintf("`%s/%s` has no %s; run metadata --write %s", n.Rel, meta.SpecFile, meta.FileName, n.Rel))
+		block(fmt.Sprintf("`%s/%s` has no %s; run metadata --write %s", n.Rel, meta.SpecFile, meta.FileName, n.Rel))
 	case n.MetaErr != nil:
-		d = append(d, fmt.Sprintf("`%s`: %v", file, n.MetaErr))
+		block(fmt.Sprintf("`%s`: %v", file, n.MetaErr))
 	case n.Meta.Hash != n.Hash || !meta.SameRules(n.Meta.Rules, n.Rules):
-		d = append(d, fmt.Sprintf("`%s` does not match the content; run metadata --write %s", file, n.Rel))
+		block(fmt.Sprintf("`%s` does not match the content; run metadata --write %s", file, n.Rel))
+	case n.Kind == Code && n.Meta.Audited == nil:
+		block(fmt.Sprintf("`%s` carries no audited; run metadata --write %s", file, n.Rel))
+	case n.Kind != Code && n.Meta.Audited != nil:
+		block(fmt.Sprintf("`%s` carries audited, which only a code node has; run metadata --write %s", file, n.Rel))
 	}
 	for _, e := range n.Sources {
 		switch {
 		case e.To == nil:
 		case e.To == n:
-			d = append(d, fmt.Sprintf("`%s` lists itself as a source", n.Rel))
+			block(fmt.Sprintf("`%s` lists itself as a source", n.Rel))
 		case !n.Kind.MaySource(e.To.Kind):
-			d = append(d, fmt.Sprintf("`%s` (%s) lists `%s` (%s) as a source; %s", n.Rel, n.Kind, e.To.Rel, e.To.Kind, allowed(n.Kind)))
+			block(fmt.Sprintf("`%s` (%s) lists `%s` (%s) as a source; %s", n.Rel, n.Kind, e.To.Rel, e.To.Kind, allowed(n.Kind)))
 		}
 	}
-	if n.Kind == Code {
-		served, _ := g.served(n)
-		for _, e := range n.Sources {
-			if e.Valid() && e.To.Kind == Perspective {
-				if _, ok := served[e.To]; !ok {
-					d = append(d, fmt.Sprintf("`%s` lists `%s`, but none of its technical specs serves it", n.Rel, e.To.Rel))
+	if n.Kind == Code && n.Meta != nil {
+		if msg := noTechnical(n); msg != "" {
+			warn(msg)
+		} else if !g.danglingTechnical(n) { // which perspectives are served is unknown until /implement drops it
+			served, _ := g.served(n)
+			for _, e := range n.Sources {
+				if e.Valid() && e.To.Kind == Perspective {
+					if _, ok := served[e.To]; !ok {
+						warn(fmt.Sprintf("`%s` lists `%s`, but none of its technical specs serves it", n.Rel, e.To.Rel))
+					}
 				}
 			}
 		}
 	}
 	return d
+}
+
+// danglingTechnical reports whether a code node lists a technical path that is no node.
+func (g *Graph) danglingTechnical(n *Node) bool {
+	for _, e := range n.Sources {
+		if k, ok := kindOf(cleanRel(e.Source.Path)); ok && k == Technical && e.Dangling() {
+			return true
+		}
+	}
+	return false
+}
+
+// noTechnical names a code node whose sources hold no technical path. It reads
+// the kind of each path, not the validity of its edge, so a node whose only
+// technical source is dangling is reported as dangling and not also here.
+func noTechnical(n *Node) string {
+	if n.Kind != Code || n.Meta == nil {
+		return ""
+	}
+	for _, s := range n.Meta.Sources {
+		if k, ok := kindOf(cleanRel(s.Path)); ok && k == Technical {
+			return ""
+		}
+	}
+	return fmt.Sprintf("`%s` lists no technical spec; a code node lists at least one", n.Rel)
 }
 
 // specless names a perspective or technical node without spec.md.
@@ -449,7 +504,7 @@ func (g *Graph) HasDrift(n *Node) bool { return len(g.NodeDrift(n)) > 0 }
 
 // Drift lists every node's drift, then files under src/ outside any node,
 // technical specs that source each other in a cycle, and gaps in TODO.md
-// that match no rule.
+// that match no rule or no code node owing an audit.
 func (g *Graph) Drift() []string {
 	var d []string
 	for _, n := range g.Nodes {

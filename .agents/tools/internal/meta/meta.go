@@ -39,6 +39,7 @@ type Metadata struct {
 	Algorithm string            `json:"algorithm"`
 	Hash      string            `json:"hash"`
 	Modified  string            `json:"modified"`
+	Audited   *int              `json:"audited,omitempty"` // code nodes only: approvals at the current hash
 	Rules     map[string]string `json:"rules,omitempty"`
 	Sources   []Source          `json:"sources,omitempty"`
 }

@@ -14,6 +14,8 @@ import (
 
 // Refresh returns n's metadata with the current hash and rules; modified moves
 // only when the hash differs from the recorded one. Sources stay as recorded.
+// On a code node, audited keeps its count while the hash is the recorded one
+// and returns to 0 when the hash moved; other kinds carry no audited.
 // A spec-less perspective or technical node is refused: its metadata is to be
 // deleted or its spec.md written, not refreshed.
 func Refresh(n *Node, now time.Time) (*meta.Metadata, error) {
@@ -35,13 +37,22 @@ func Refresh(n *Node, now time.Time) (*meta.Metadata, error) {
 	if n.Meta == nil || n.Meta.Hash != n.Hash || m.Modified == "" {
 		m.Modified = meta.Stamp(now)
 	}
+	if n.Kind == Code {
+		audited := 0
+		if n.Meta != nil && n.Meta.Hash == n.Hash && n.Meta.Audited != nil {
+			audited = *n.Meta.Audited
+		}
+		m.Audited = &audited
+	}
 	return m, nil
 }
 
 // Sync is Refresh plus the current hash and rules of every source. It refuses
 // a dangling or invalid source, a source whose own metadata has drift, a code
-// node whose sources do not match the perspective nodes its technical specs
-// serve, and a code node that waits on /design.
+// node that lists no technical spec, a code node whose sources do not match
+// the perspective nodes its technical specs serve, and a code node that waits
+// on /design. Recording a source listed since the last sync returns audited
+// to 0: no judge has seen that edge.
 func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 	m, err := Refresh(n, now)
 	if err != nil {
@@ -56,19 +67,26 @@ func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 		case g.HasDrift(e.To):
 			return nil, fmt.Errorf("`%s` has drift; run metadata --write %s first", e.To.Rel, e.To.Rel)
 		}
+		if e.Source.Hash == "" && m.Audited != nil {
+			*m.Audited = 0
+		}
 		m.Sources[i].Hash = e.To.Hash
 		m.Sources[i].Rules = copyRules(e.To.Rules)
 	}
 	if n.Kind == Code {
 		var problems []string
-		served, _ := g.served(n)
-		for _, p := range g.missing(n) {
-			problems = append(problems, fmt.Sprintf("`%s` lists `%s` but not `%s`, which it serves; add it to sources", n.Rel, served[p].Rel, p.Rel))
-		}
-		for _, e := range n.Sources {
-			if e.Valid() && e.To.Kind == Perspective {
-				if _, ok := served[e.To]; !ok {
-					problems = append(problems, fmt.Sprintf("`%s` lists `%s`, but none of its technical specs serves it", n.Rel, e.To.Rel))
+		if msg := noTechnical(n); msg != "" {
+			problems = append(problems, msg) // which perspectives are served is unknown without a technical spec
+		} else {
+			served, _ := g.served(n)
+			for _, p := range g.missing(n) {
+				problems = append(problems, fmt.Sprintf("`%s` lists `%s` but not `%s`, which it serves; add it to sources", n.Rel, served[p].Rel, p.Rel))
+			}
+			for _, e := range n.Sources {
+				if e.Valid() && e.To.Kind == Perspective {
+					if _, ok := served[e.To]; !ok {
+						problems = append(problems, fmt.Sprintf("`%s` lists `%s`, but none of its technical specs serves it", n.Rel, e.To.Rel))
+					}
 				}
 			}
 		}
@@ -79,6 +97,36 @@ func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 			return nil, errors.New(strings.Join(problems, "\n"))
 		}
 	}
+	return m, nil
+}
+
+// Approve is Refresh plus one more approval on audited: a judge confirmed that
+// every technical spec the code node lists governs its code and that no
+// technical spec it obeys is missing. It refuses a node that is no code node,
+// one with drift (a hash that moved since the metadata was last written
+// included), one with a dangling source, and one that is an /implement unit —
+// stale against a source or missing a served perspective — so an approval is
+// recorded only on a node that has no drift and is no unit; the count then
+// persists until the hash moves or a sync records a new source. A node that
+// only waits on /design is approved.
+func (g *Graph) Approve(n *Node, now time.Time) (*meta.Metadata, error) {
+	if n.Kind != Code {
+		return nil, fmt.Errorf("`%s` is a %s node; only a code node is approved", n.Rel, n.Kind)
+	}
+	if n.Meta != nil && n.MetaErr == nil && n.Meta.Hash != "" && n.Meta.Hash != n.Hash {
+		return nil, fmt.Errorf("`%s` changed since its metadata was last written; run metadata --write %s and judge it again", n.Rel, n.Rel)
+	}
+	if d := g.NodeDrift(n); len(d) > 0 {
+		return nil, errors.New(strings.Join(d, "\n"))
+	}
+	if u, ok := g.codeUnit(n); ok {
+		return nil, fmt.Errorf("`%s` is an /implement unit (%s); approve it once synced", n.Rel, u.Reason)
+	}
+	m, err := Refresh(n, now)
+	if err != nil {
+		return nil, err
+	}
+	*m.Audited++
 	return m, nil
 }
 
