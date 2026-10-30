@@ -44,10 +44,10 @@ export function findAccountById(db: DatabaseSync, id: string): Account | undefin
 }
 
 /** Inserts an account; returns undefined when the email already has one. */
-export function createAccount(db: DatabaseSync, email: string, passwordHash: string, now: Date): Account | undefined {
+export function createAccount(db: DatabaseSync, email: string, passwordHash: string): Account | undefined {
   const account: Account = { id: randomUUID(), email: normalizeEmail(email), password_hash: passwordHash };
   try {
-    db.prepare("INSERT INTO account (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)").run(account.id, account.email, account.password_hash, now.toISOString());
+    db.prepare("INSERT INTO account (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)").run(account.id, account.email, account.password_hash, new Date().toISOString());
   } catch (error) {
     if (error instanceof Error && error.message.includes("UNIQUE")) return undefined;
     throw error;
@@ -55,8 +55,8 @@ export function createAccount(db: DatabaseSync, email: string, passwordHash: str
   return account;
 }
 
-export function createSession(db: DatabaseSync, accountId: string, now: Date): Session {
-  const session: Session = { id: randomBytes(32).toString("hex"), account_id: accountId, last_seen_at: now.toISOString() };
+export function createSession(db: DatabaseSync, accountId: string): Session {
+  const session: Session = { id: randomBytes(32).toString("hex"), account_id: accountId, last_seen_at: new Date().toISOString() };
   db.prepare("INSERT INTO session (id, account_id, last_seen_at) VALUES (?, ?, ?)").run(session.id, session.account_id, session.last_seen_at);
   return session;
 }
@@ -65,8 +65,8 @@ export function findSession(db: DatabaseSync, id: string): Session | undefined {
   return db.prepare("SELECT id, account_id, last_seen_at FROM session WHERE id = ?").get(id) as Session | undefined;
 }
 
-export function touchSession(db: DatabaseSync, id: string, now: Date): void {
-  db.prepare("UPDATE session SET last_seen_at = ? WHERE id = ?").run(now.toISOString(), id);
+export function touchSession(db: DatabaseSync, id: string, at: Date): void {
+  db.prepare("UPDATE session SET last_seen_at = ? WHERE id = ?").run(at.toISOString(), id);
 }
 
 export function deleteSession(db: DatabaseSync, id: string): void {

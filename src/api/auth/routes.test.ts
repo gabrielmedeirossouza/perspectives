@@ -1,17 +1,23 @@
 import { DatabaseSync } from "node:sqlite";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { build } from "../server.js";
 
 const DAY = 24 * 60 * 60 * 1000;
+const START = new Date("2026-01-01T00:00:00Z");
 
 let app: FastifyInstance;
-let now: Date;
 
 beforeEach(() => {
-  now = new Date("2026-01-01T00:00:00Z");
-  app = build({ db: new DatabaseSync(":memory:"), now: () => now });
+  vi.useFakeTimers({ now: START, toFake: ["Date"] });
+  app = build({ db: new DatabaseSync(":memory:") });
 });
+
+afterEach(() => vi.useRealTimers());
+
+function advance(ms: number) {
+  vi.setSystemTime(new Date(Date.now() + ms));
+}
 
 const credentials = { email: "Ann@Example.com", password: "longenough" };
 
@@ -26,6 +32,10 @@ function cookieOf(response: { headers: Record<string, unknown> }): string {
   return raw.split(";")[0];
 }
 
+async function sessionStatus(cookie: string) {
+  return (await app.inject({ method: "GET", url: "/auth/session", headers: { cookie } })).statusCode;
+}
+
 describe("sign-up", () => {
   it("creates the account, normalizes the email, and starts a session", async () => {
     const response = await signUp();
@@ -37,8 +47,7 @@ describe("sign-up", () => {
     expect(cookie).toContain("SameSite=Lax");
     expect(cookie).toContain("Path=/");
     expect(cookie).toContain("Secure");
-    const session = await app.inject({ method: "GET", url: "/auth/session", headers: { cookie: cookieOf(response) } });
-    expect(session.statusCode).toBe(200);
+    expect(await sessionStatus(cookieOf(response))).toBe(200);
   });
 
   it("refuses a second account for the same email, whatever its case", async () => {
@@ -49,10 +58,17 @@ describe("sign-up", () => {
     expect(response.headers["set-cookie"]).toBeUndefined();
   });
 
-  it("refuses a short password, an email without @, and missing fields", async () => {
+  it("gives one account to two simultaneous sign-ups of one email", async () => {
+    const [a, b] = await Promise.all([signUp(), signUp({ email: "ann@example.com", password: "anotherpass" })]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([201, 409]);
+  });
+
+  it("refuses a short or long password, a malformed or long email, and missing fields", async () => {
     for (const body of [
       { email: "a@b.c", password: "short7!" },
+      { email: "a@b.c", password: "x".repeat(129) },
       { email: "nope", password: "longenough" },
+      { email: "a@" + "b".repeat(253), password: "longenough" },
       { email: "a@b.c" },
       {},
     ]) {
@@ -60,6 +76,10 @@ describe("sign-up", () => {
       expect(response.statusCode).toBe(400);
       expect(response.json()).toEqual({ error: "invalid" });
     }
+  });
+
+  it("accepts the longest email and password the rules allow", async () => {
+    expect((await signUp({ email: "a@" + "b".repeat(252), password: "x".repeat(128) })).statusCode).toBe(201);
   });
 });
 
@@ -100,22 +120,22 @@ describe("session", () => {
     const out = await app.inject({ method: "POST", url: "/auth/sign-out", headers: { cookie } });
     expect(out.statusCode).toBe(204);
     expect(String(out.headers["set-cookie"])).toMatch(/^ledger_session=;/);
-    expect((await app.inject({ method: "GET", url: "/auth/session", headers: { cookie } })).statusCode).toBe(401);
+    expect(await sessionStatus(cookie)).toBe(401);
     expect((await app.inject({ method: "POST", url: "/auth/sign-out" })).statusCode).toBe(204);
   });
 
   it("ends after 7 days without a request, and slides while requests come", async () => {
     const cookie = cookieOf(await signUp());
-    now = new Date(now.getTime() + 6 * DAY);
-    expect((await app.inject({ method: "GET", url: "/auth/session", headers: { cookie } })).statusCode).toBe(200);
-    now = new Date(now.getTime() + 6 * DAY);
-    expect((await app.inject({ method: "GET", url: "/auth/session", headers: { cookie } })).statusCode).toBe(200);
-    now = new Date(now.getTime() + 7 * DAY + 1);
+    advance(6 * DAY);
+    expect(await sessionStatus(cookie)).toBe(200);
+    advance(6 * DAY);
+    expect(await sessionStatus(cookie)).toBe(200);
+    advance(7 * DAY + 1);
     const expired = await app.inject({ method: "GET", url: "/auth/session", headers: { cookie } });
     expect(expired.statusCode).toBe(401);
     expect(expired.json()).toEqual({ error: "no_session" });
-    now = new Date(now.getTime() - 7 * DAY);
-    expect((await app.inject({ method: "GET", url: "/auth/session", headers: { cookie } })).statusCode).toBe(401);
+    advance(-7 * DAY);
+    expect(await sessionStatus(cookie)).toBe(401);
   });
 
   it("answers only the account the session belongs to", async () => {

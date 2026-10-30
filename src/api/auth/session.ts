@@ -16,8 +16,8 @@ export function cookieOptions() {
 }
 
 /** Starts a session for the account and sets its cookie on the reply. */
-export function startSession(db: DatabaseSync, reply: FastifyReply, accountId: string, now: Date): Session {
-  const session = createSession(db, accountId, now);
+export function startSession(db: DatabaseSync, reply: FastifyReply, accountId: string): Session {
+  const session = createSession(db, accountId);
   reply.setCookie(COOKIE, session.id, cookieOptions());
   return session;
 }
@@ -26,13 +26,13 @@ export function startSession(db: DatabaseSync, reply: FastifyReply, accountId: s
  * Loads the live session of the request's cookie: none without a cookie or
  * for an unknown id; an expired one is deleted; a live one is touched.
  */
-export function loadSession(db: DatabaseSync, request: FastifyRequest, now: Date): Session | undefined {
+export function loadSession(db: DatabaseSync, request: FastifyRequest): Session | undefined {
   const id = request.cookies[COOKIE];
   if (!id) return undefined;
   const session = findSession(db, id);
   if (!session) return undefined;
-  const lastSeen = new Date(session.last_seen_at).getTime();
-  if (now.getTime() - lastSeen > SESSION_DAYS * DAY_MS) {
+  const now = new Date();
+  if (now.getTime() - new Date(session.last_seen_at).getTime() > SESSION_DAYS * DAY_MS) {
     deleteSession(db, id);
     return undefined;
   }
