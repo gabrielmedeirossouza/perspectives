@@ -1272,3 +1272,25 @@ func TestPurposeJoinsWrappedLinesAndSkipsFences(t *testing.T) {
 		}
 	}
 }
+
+func TestLinkToAnIgnoredFileIsDrift(t *testing.T) {
+	root := fixture(t)
+	write(t, root, ".gitignore", "dist/\n")
+	write(t, root, "src/dist/out.js", "x\n")
+	write(t, root, P, pSpec+"\nSee [the build](../../../src/dist/out.js) and [the root](/AGENTS.md#root).\n")
+	g := load(t, root)
+	if d := g.NodeDrift(g.Node(P)); len(d) != 2 || !has(d, "`src/dist/out.js` does not exist") {
+		t.Fatalf("drift of %s = %v", P, d)
+	}
+}
+
+func TestCodeWaitsOnTheDriftOfASource(t *testing.T) {
+	root := fixture(t)
+	settle(t, root)
+	write(t, root, I, "# Invite\n\nPurpose.\n\n## HTTP\n\n### Invite endpoint\n\n`POST /invites` **must** create one and answer `201`. Serves **Invite expiry**.\n")
+	g := load(t, root)
+	run, wait := g.Batch(5)
+	if len(run) != 0 || len(wait) != 1 || !strings.Contains(wait[0].Wait, "`"+I+"` has drift") {
+		t.Fatalf("run = %+v wait = %+v", run, wait)
+	}
+}

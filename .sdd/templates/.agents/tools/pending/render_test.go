@@ -136,7 +136,7 @@ func TestAuditSectionAndDossier(t *testing.T) {
 	if !strings.Contains(full, "Nothing stale, dangling, or unconsumed.") || strings.Contains(full, "No pending work.") || !strings.Contains(full, "# Audit\n\n- `"+C+"` owes an audit (/sdd-audit)") || strings.Contains(full, "`src` ") {
 		t.Fatalf("full output:\n%s", full)
 	}
-	if batch := render(g, true); strings.Contains(batch, "# Audit") {
+	if batch := render(g, true); strings.Contains(batch, "# Audit") || strings.Contains(batch, "No pending work.") {
 		t.Fatalf("batch output carries the audit section:\n%s", batch)
 	}
 	targets, err := codeNodes(g, nil)

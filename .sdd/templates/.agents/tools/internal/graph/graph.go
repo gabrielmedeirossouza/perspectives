@@ -265,10 +265,14 @@ func Load(root string) (*Graph, error) {
 			n.Rules, n.Order, n.RuleErr = meta.RuleHashes(n.text)
 		}
 	}
-	anchors, listings := map[string]map[string]bool{}, map[string]map[string]bool{}
+	paths, err := repoPaths(root)
+	if err != nil {
+		return nil, err
+	}
+	anchors := map[string]map[string]bool{}
 	for _, n := range g.Nodes {
 		if n.text != "" {
-			n.refErrs = g.brokenLinks(n, anchors, listings)
+			n.refErrs = g.brokenLinks(n, paths, anchors)
 			n.text = ""
 		}
 	}
@@ -293,10 +297,10 @@ func Load(root string) (*Graph, error) {
 // or a heading the markdown file they name does not hold, its slug computed
 // as Anchors of specs/AGENTS.md says. A path is resolved against the spec's
 // directory, or against the repository root when it starts with `/`; a query
-// is ignored; every segment must match a name on disk exactly, case included,
-// as on a case-sensitive host. A link with a scheme is not followed. anchors
-// caches the slugs of each file read, listings the names of each directory.
-func (g *Graph) brokenLinks(n *Node, anchors, listings map[string]map[string]bool) []string {
+// is ignored; it must name, case included, a file git tracks or would track,
+// or a directory holding one — paths. A link with a scheme is not followed.
+// anchors caches the slugs of each file read.
+func (g *Graph) brokenLinks(n *Node, paths map[string]bool, anchors map[string]map[string]bool) []string {
 	owner := "/sdd-spec"
 	if n.Kind == Technical {
 		owner = "/sdd-design"
@@ -325,7 +329,7 @@ func (g *Graph) brokenLinks(n *Node, anchors, listings map[string]map[string]boo
 			out = append(out, fmt.Sprintf("`%s` links `%s`, which leaves the repository; fix the link (%s)", n.Rel, link, owner))
 			continue
 		}
-		if !g.exists(rel, listings) {
+		if !paths[rel] {
 			out = append(out, fmt.Sprintf("`%s` links `%s`, but `%s` does not exist; fix the link (%s)", n.Rel, link, rel, owner))
 			continue
 		}
@@ -349,29 +353,22 @@ func (g *Graph) brokenLinks(n *Node, anchors, listings map[string]map[string]boo
 	return out
 }
 
-// exists reports whether a root-relative path names a file or directory whose
-// every segment matches a name on disk exactly.
-func (g *Graph) exists(rel string, listings map[string]map[string]bool) bool {
-	if rel == "." {
-		return true
+// repoPaths lists every file of the repository git tracks or would track, and
+// every directory holding one, the root as ".".
+func repoPaths(root string) (map[string]bool, error) {
+	cmd := exec.Command("git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git ls-files in %s: %s", root, strings.TrimSpace(errb.String()))
 	}
-	dir := "."
-	for _, seg := range strings.Split(rel, "/") {
-		names, ok := listings[dir]
-		if !ok {
-			names = map[string]bool{}
-			entries, _ := os.ReadDir(filepath.Join(g.Root, filepath.FromSlash(dir)))
-			for _, e := range entries {
-				names[e.Name()] = true
-			}
-			listings[dir] = names
+	paths := map[string]bool{".": true}
+	for _, f := range strings.Split(out.String(), "\x00") {
+		for ; f != "" && f != "." && !paths[f]; f = path.Dir(f) {
+			paths[f] = true
 		}
-		if !names[seg] {
-			return false
-		}
-		dir = path.Join(dir, seg)
 	}
-	return true
+	return paths, nil
 }
 
 var schemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
@@ -895,6 +892,9 @@ func (g *Graph) Design() []string {
 							line += fmt.Sprintf("; %q parked: %s (/sdd-spec)", gap.Title, gap.Reason)
 						}
 					}
+					if b := g.blocking(e.To); len(b) > 0 {
+						line += fmt.Sprintf(" — waits: `%s` has drift: %s", e.To.Rel, b[0])
+					}
 					out = append(out, line)
 				}
 			}
@@ -1121,7 +1121,8 @@ func (g *Graph) codeUnit(c *Node) (NodeUnit, bool) {
 	return u, true
 }
 
-// codeWait names what /sdd-design owes before code node c can run.
+// codeWait names what is owed before code node c can run: what wait names
+// for a technical spec it lists, then the drift of a perspective it lists.
 func (g *Graph) codeWait(c *Node) string {
 	for _, e := range c.Sources {
 		if e.Valid() && e.To.Kind == Technical {
@@ -1130,11 +1131,20 @@ func (g *Graph) codeWait(c *Node) string {
 			}
 		}
 	}
+	for _, e := range c.Sources {
+		if e.Valid() && e.To.Kind == Perspective {
+			if b := g.blocking(e.To); len(b) > 0 {
+				return fmt.Sprintf("`%s` has drift: %s", e.To.Rel, b[0])
+			}
+		}
+	}
 	return ""
 }
 
-// wait names what /sdd-design owes before code against t can run: t or a
-// technical spec upstream of it is stale or has a dangling source.
+// wait names what is owed before code against t can run: t or a technical
+// spec upstream of it is stale or has a dangling source (/sdd-design), or has
+// drift that makes its content or metadata not what it claims, which refuses
+// every sync against it, or a source of it has.
 func (g *Graph) wait(t *Node, seen map[*Node]bool) string {
 	if seen == nil {
 		seen = map[*Node]bool{}
@@ -1149,6 +1159,16 @@ func (g *Graph) wait(t *Node, seen map[*Node]bool) string {
 		}
 		if e.Stale() {
 			return fmt.Sprintf("`%s` is stale against `%s` (/sdd-design)", t.Rel, e.To.Rel)
+		}
+	}
+	if b := g.blocking(t); len(b) > 0 {
+		return fmt.Sprintf("`%s` has drift: %s", t.Rel, b[0])
+	}
+	for _, e := range t.Sources {
+		if e.Valid() {
+			if b := g.blocking(e.To); len(b) > 0 {
+				return fmt.Sprintf("`%s` has drift: %s", e.To.Rel, b[0])
+			}
 		}
 	}
 	for _, e := range t.Sources {

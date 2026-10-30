@@ -159,10 +159,7 @@ func render(g *graph.Graph, batchOnly bool) string {
 	design := g.Design()
 	units := g.Units()
 	drift := g.Drift()
-	var audit []string
-	if !batchOnly {
-		audit = auditLines(g.Audits())
-	}
+	audit := auditLines(g.Audits())
 	if len(design) == 0 && len(units) == 0 {
 		if len(audit) == 0 && len(drift) == 0 {
 			out = append(out, "No pending work.")
@@ -208,7 +205,7 @@ func render(g *graph.Graph, batchOnly bool) string {
 		}
 		out = append(out, "")
 	}
-	if len(audit) > 0 {
+	if len(audit) > 0 && !batchOnly {
 		out = append(out, "# Audit", "")
 		for _, line := range audit {
 			out = append(out, "- "+line)
