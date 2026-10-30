@@ -688,7 +688,7 @@ func TestNamesReMatchesWholePathTokens(t *testing.T) {
 		"Not src/backend/invitee.":                     false,
 		"Not src/backend/invite/deeper either.":        false,
 		"Only src/ in general.":                        false,
-		"Links to specs/business/invite.":       false,
+		"Links to specs/business/invite.":              false,
 	} {
 		if got := re.MatchString(text); got != want {
 			t.Errorf("%q: names = %v, want %v", text, got, want)

@@ -51,14 +51,19 @@ func Default() Config {
 // unknown field, a wrong type, or an invalid layout is an error. A path left
 // empty takes its default.
 func Load(root string) (Config, error) {
-	c := Default()
 	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(File)))
 	if os.IsNotExist(err) {
-		return c, nil
+		return Default(), nil
 	}
 	if err != nil {
-		return c, err
+		return Default(), err
 	}
+	return Parse(raw)
+}
+
+// Parse decodes the content of a config file over Default.
+func Parse(raw []byte) (Config, error) {
+	c := Default()
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&c); err != nil {

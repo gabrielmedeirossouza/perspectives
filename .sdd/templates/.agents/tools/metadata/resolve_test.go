@@ -15,12 +15,12 @@ func TestResolveListsEachNodeOnce(t *testing.T) {
 		t.Fatalf("git init: %v %s", err, out)
 	}
 	for rel, text := range map[string]string{
-		"AGENTS.md":              "# Root\n",
-		".sdd/.sdd-config.json":  `{"version": 0, "paths": {"specs": "specs", "src": "src", "technical": "src/specs"}}` + "\n",
-		"specs/AGENTS.md": "# P\n",
-		"src/x/a.go":             "package x\n",
-		"src/x/.metadata.json":   `{"version": 1}` + "\n",
-		"src/y/.metadata.json":   `{"version": 1}` + "\n",
+		"AGENTS.md":             "# Root\n",
+		".sdd/.sdd-config.json": `{"version": 0, "paths": {"specs": "specs", "src": "src", "technical": "src/specs"}}` + "\n",
+		"specs/AGENTS.md":       "# P\n",
+		"src/x/a.go":            "package x\n",
+		"src/x/.metadata.json":  `{"version": 1}` + "\n",
+		"src/y/.metadata.json":  `{"version": 1}` + "\n",
 	} {
 		p := filepath.Join(root, filepath.FromSlash(rel))
 		os.MkdirAll(filepath.Dir(p), 0o755)
