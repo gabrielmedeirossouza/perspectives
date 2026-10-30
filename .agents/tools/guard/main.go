@@ -121,14 +121,36 @@ func run(root string, check bool, w io.Writer) error {
 		fmt.Fprintf(w, "version %d (branch %s, no bump)\n", v, b)
 		return nil
 	}
+	if committed, ok := headVersion(root); ok && v > committed {
+		fmt.Fprintf(w, "version %d already bumped from %d, staged\n", v, committed)
+		return stage(root)
+	}
 	if err := os.WriteFile(file, bump(raw, v+1), 0o644); err != nil {
 		return err
 	}
-	if out, err := exec.Command("git", "-C", root, "add", "--", configPath).CombinedOutput(); err != nil {
-		return fmt.Errorf("git add: %s", strings.TrimSpace(string(out)))
+	if err := stage(root); err != nil {
+		return err
 	}
 	fmt.Fprintf(w, "version %d -> %d, staged\n", v, v+1)
 	return nil
+}
+
+// stage adds the config to the index.
+func stage(root string) error {
+	if out, err := exec.Command("git", "-C", root, "add", "--", configPath).CombinedOutput(); err != nil {
+		return fmt.Errorf("git add: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// headVersion is the version the last commit holds; ok is false without one.
+func headVersion(root string) (int, bool) {
+	out, err := exec.Command("git", "-C", root, "show", "HEAD:"+configPath).Output()
+	if err != nil {
+		return 0, false
+	}
+	v, err := version(out)
+	return v, err == nil
 }
 
 // version reads the one "version" field of the config.

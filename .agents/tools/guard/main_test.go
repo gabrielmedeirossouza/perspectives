@@ -51,6 +51,8 @@ func TestRunBumpsOnMainOnly(t *testing.T) {
 		write(t, root, m+"/x.go", "package x\n")
 	}
 	write(t, root, configPath, "{\n  \"version\": 3\n}\n")
+	git(t, root, "add", "-A")
+	git(t, root, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "v3")
 	var out bytes.Buffer
 	if err := run(root, true, &out); err != nil || !strings.HasSuffix(out.String(), "version 3\n") {
 		t.Fatalf("check: %v\n%s", err, out.String())
@@ -61,6 +63,10 @@ func TestRunBumpsOnMainOnly(t *testing.T) {
 	}
 	if staged := git(t, root, "diff", "--cached", "--name-only"); !strings.Contains(staged, configPath) {
 		t.Fatalf("staged = %q", staged)
+	}
+	out.Reset()
+	if err := run(root, false, &out); err != nil || !strings.HasSuffix(out.String(), "version 4 already bumped from 3, staged\n") {
+		t.Fatalf("second bump before a commit: %v\n%s", err, out.String())
 	}
 	git(t, root, "checkout", "-q", "-b", "other")
 	out.Reset()
