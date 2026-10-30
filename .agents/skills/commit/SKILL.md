@@ -53,7 +53,7 @@ Out of scope: version tags, version-file bumps, changelogs, pull requests, histo
 | `perf` | makes existing behavior faster without changing it | patch |
 | `refactor` | restructures code without changing behavior | none |
 | `test` | only adds or changes tests | none |
-| `docs` | changes specs under `perspectives/` or `src/specs/` with their `.metadata.json`, a code node's `.metadata.json` in `audited` or `sources` only, `CONTEXT.md`, `TODO.md`, `AGENTS.md`, brainstorms under `.sdd/brainstorming/`, or other prose | none |
+| `docs` | changes specs under `specs/` or `src/specs/` with their `.metadata.json`, a code node's `.metadata.json` in `audited` or `sources` only, `CONTEXT.md`, `TODO.md`, `AGENTS.md`, brainstorms under `.sdd/brainstorming/`, or other prose | none |
 | `build` | changes dependencies, manifests, or build configuration | none |
 | `ci` | changes CI configuration | none |
 | `chore` | changes agent skills under `.agents/skills/`, tools under `.agents/tools/`, hooks under `.githooks/`, or other harness tooling | none |

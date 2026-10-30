@@ -68,7 +68,7 @@ Examples: `/prototype`; `/prototype invite-expiry`; `/prototype --discard invite
 4. **Commit** in the worktree: `git -C .sdd/prototypes/<name> add -A`, then `git -C .sdd/prototypes/<name> commit --no-verify -m "chore(prototype): <summary>"`. `--no-verify` is allowed on `prototype/*` only. Never push.
 5. **Report:** worktree, branch, how to run it, what was faked or simplified, findings that belong in the brainstorm (`/brainstorming <name>`), and `/prototype --discard <name>`.
 
-Never edit spec files under `perspectives/` or `src/specs/`, any `.metadata.json`, `CONTEXT.md`, `TODO.md`, the brainstorm, or any file outside the worktree except the manifest.
+Never edit spec files under `specs/` or `src/specs/`, any `.metadata.json`, `CONTEXT.md`, `TODO.md`, the brainstorm, or any file outside the worktree except the manifest.
 
 ## Discard
 

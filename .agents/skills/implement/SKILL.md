@@ -38,7 +38,7 @@ Examples: `/implement continue`; `/implement invite`; `/implement src/specs/invi
 
 **Done when:** every rule in the queue has passed the Implementation gate and its node is synced, or it is parked as a design gap; removed rules in the closure are cleaned; the user has the phase plan and the report.
 
-1. **Reach** the root `AGENTS.md`, `src/AGENTS.md`, and `perspectives/AGENTS.md`.
+1. **Reach** the root `AGENTS.md`, `src/AGENTS.md`, and `specs/AGENTS.md`.
 2. **Resolve the seed**: under `continue`, the batch of **Continue**. Otherwise a technical spec under `src/specs/`, by path or by name. Ambiguous → list candidates and ask.
 3. **Close** the set: the technical spec, the perspective specs it serves, the technical specs it depends on (for reading), and the code nodes that list it. Run `go run -C .agents/tools ./pending`: its `# Implement` lines name, per node, the rules to run and their state — new, changed, removed, renamed — and whether the node waits on `/design`. Apply `:<titles>` after closure. A unit that waits is not run: report what `/design` owes and stop. Report the plan **before** executing.
 4. **Queue:** removed rules first, then the rules `pending` names — or every rule of the seed and of the perspective specs it serves, for a technical spec with no code node. Topological order by citations; the product rule before the technical rule that serves it; top → bottom in the file.
@@ -46,7 +46,7 @@ Examples: `/implement continue`; `/implement invite`; `/implement src/specs/invi
 6. **Orchestrate** (below). Each item: Implementation gate. A new directory gets its `.metadata.json` with `sources[].path` and `metadata --write`. A code node that `pending` reports as missing a source gets that perspective node added to `sources[].path`; a dangling source is dropped once its exclusive code is deleted. A code node is synced only after the test phases are green and every rule its sources hold is 100% done; otherwise it stays stale. Spec files, `src/specs/`, and `CONTEXT.md` stay untouched.
 7. **Report** by phase and item: done, blocked, parked, files created, indirections (C7), design gaps, test results, nodes synced and nodes left stale, and the nodes that now owe `/audit`.
 
-A hole or open spec, product or technical → park the rule under `## Design gap` of `TODO.md` (shape in `perspectives/AGENTS.md`) and report `/design`, which closes it or escalates it to `/spec`; do not edit the spec. Only the parent writes `TODO.md`; a child reports the block.
+A hole or open spec, product or technical → park the rule under `## Design gap` of `TODO.md` (shape in `specs/AGENTS.md`) and report `/design`, which closes it or escalates it to `/spec`; do not edit the spec. Only the parent writes `TODO.md`; a child reports the block.
 
 ## Continue
 

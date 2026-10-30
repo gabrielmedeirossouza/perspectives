@@ -12,7 +12,7 @@ import (
 func TestEncodeIsByteStableAndUnescaped(t *testing.T) {
 	m := &Metadata{Version: 1, Algorithm: "sha256", Hash: "h", Modified: "2026-01-01T00:00:00Z",
 		Rules:   map[string]string{"Z & <last>": "1", "A first": "2"},
-		Sources: []Source{{Path: "perspectives/x", Hash: "s", Rules: map[string]string{"b": "1", "a": "2"}}}}
+		Sources: []Source{{Path: "specs/x", Hash: "s", Rules: map[string]string{"b": "1", "a": "2"}}}}
 	a, err := Encode(m)
 	if err != nil {
 		t.Fatal(err)

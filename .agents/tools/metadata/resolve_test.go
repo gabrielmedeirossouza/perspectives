@@ -16,8 +16,8 @@ func TestResolveListsEachNodeOnce(t *testing.T) {
 	}
 	for rel, text := range map[string]string{
 		"AGENTS.md":              "# Root\n",
-		".sdd/.sdd-config.json":  `{"version": 0, "paths": {"specs": "perspectives", "src": "src", "technical": "src/specs"}}` + "\n",
-		"perspectives/AGENTS.md": "# P\n",
+		".sdd/.sdd-config.json":  `{"version": 0, "paths": {"specs": "specs", "src": "src", "technical": "src/specs"}}` + "\n",
+		"specs/AGENTS.md": "# P\n",
 		"src/x/a.go":             "package x\n",
 		"src/x/.metadata.json":   `{"version": 1}` + "\n",
 		"src/y/.metadata.json":   `{"version": 1}` + "\n",

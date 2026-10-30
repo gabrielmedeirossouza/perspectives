@@ -1,4 +1,4 @@
-// Package md reads the markdown shapes of perspectives/AGENTS.md: headings of
+// Package md reads the markdown shapes of specs/AGENTS.md: headings of
 // level 1–3 outside code fences, and the ### rules of a spec file.
 package md
 

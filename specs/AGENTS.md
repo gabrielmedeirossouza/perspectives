@@ -1,18 +1,18 @@
-# Perspectives
+# Specs
 
-Perspectives hold the product specifications. They are the single source of truth for what the system does and for whom.
+This tree holds the product specifications. They are the single source of truth for what the system does and for whom.
 
 A perspective is documentation written from the viewpoint of one actor of the system: the business, the user, the operator.
 
 What lives in which perspective is named here. Each nested `AGENTS.md` fills the slots this file points at for that viewpoint.
 
-- **Business** (`perspectives/business/`): product policy of each business feature. Product policy lives here, not on the user surface.
-- **User** (`perspectives/user/`): what the user sees and does — screens, flows, copy. Screen behavior lives here, not in business.
-- **Operator** (`perspectives/operator/`): how the system is shipped and run — environments, deployment, observability — as policy. Nothing the product does for its users lives here.
+- **Business** (`specs/business/`): product policy of each business feature. Product policy lives here, not on the user surface.
+- **User** (`specs/user/`): what the user sees and does — screens, flows, copy. Screen behavior lives here, not in business.
+- **Operator** (`specs/operator/`): how the system is shipped and run — environments, deployment, observability — as policy. Nothing the product does for its users lives here.
 
-How any of it is built — stack, placement, contracts, persistence, toolchain — is a technical rule and lives in `src/specs/`, written by `/design` under `src/AGENTS.md`. No spec file under `perspectives/` cites `src/` (**Citation**).
+How any of it is built — stack, placement, contracts, persistence, toolchain — is a technical rule and lives in `src/specs/`, written by `/design` under `src/AGENTS.md`. No spec file under `specs/` cites `src/` (**Citation**).
 
-Apply the **Writing gate** before mutating a spec file under `perspectives/`. Reach `CONTEXT.md` when writing, changing, or reviewing any spec file here. Update it in the same session a term is defined, renamed, or retired. Shape is under **Glossary**. Reach `TODO.md` when a needed spec is missing or a parked item may close. Shape is under **TODO**.
+Apply the **Writing gate** before mutating a spec file under `specs/`. Reach `CONTEXT.md` when writing, changing, or reviewing any spec file here. Update it in the same session a term is defined, renamed, or retired. Shape is under **Glossary**. Reach `TODO.md` when a needed spec is missing or a parked item may close. Shape is under **TODO**.
 
 ## Tree
 
@@ -54,7 +54,7 @@ Specs use the canonical term; they do not redefine it. When a term is resolved, 
 ### Shape
 
 ```markdown
-# Perspectives
+# Glossary
 
 Canonical vocabulary of this tree. Terms here define what things are — behavior and rules live in spec files.
 
@@ -151,7 +151,7 @@ Documentation is self-contained: a rule body is never copied into a second file,
 
 **Cite by title.** Naming the human-readable title is the citation. Add a markdown link (`[Fixed catalog of three roles](../access/spec.md#fixed-catalog-of-three-roles)`) when the reader has to reach the owner. The link complements the title; it never replaces the nucleus of the citing rule.
 
-A perspective spec never cites `src/`. A technical spec cites a perspective rule by title, with a link into `perspectives/`, only to name **which** rule it serves — it does not restate, summarize, or paraphrase that rule.
+A perspective spec never cites `src/`. A technical spec cites a perspective rule by title, with a link into `specs/`, only to name **which** rule it serves — it does not restate, summarize, or paraphrase that rule.
 
 ## Feature vs global
 

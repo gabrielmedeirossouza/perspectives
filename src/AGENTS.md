@@ -1,6 +1,6 @@
 # Source
 
-Technical specs and product code live in this tree. Product rules live in `perspectives/`; how they are built lives in `src/specs/`; how code materializes both — the implementation postulates and the Implementation gate — lives here. Nodes, sources, and states are defined under **Metadata** in the root `AGENTS.md`.
+Technical specs and product code live in this tree. Product rules live in `specs/`; how they are built lives in `src/specs/`; how code materializes both — the implementation postulates and the Implementation gate — lives here. Nodes, sources, and states are defined under **Metadata** in the root `AGENTS.md`.
 
 ## Tree
 
@@ -21,13 +21,13 @@ Where code goes is a technical rule, not a convention of this file: a technical 
 
 ## Technical spec
 
-A technical spec states **how** a part of the system is built: placement, contracts (HTTP verbs, status codes, payloads), persistence, libraries and their versions, toolchain, runtime, test runner, lint, code layering, env vars, numeric limits, command entry points. It never states who may, when it expires, what the screen shows, what the click does, or who may ship — those are product rules in `perspectives/`, which it serves.
+A technical spec states **how** a part of the system is built: placement, contracts (HTTP verbs, status codes, payloads), persistence, libraries and their versions, toolchain, runtime, test runner, lint, code layering, env vars, numeric limits, command entry points. It never states who may, when it expires, what the screen shows, what the click does, or who may ship — those are product rules in `specs/`, which it serves.
 
 `<name>` names what the spec builds, by the code boundary it decides, not by a perspective: a module (`invite`), a shared mechanism (`http-client`), or a global constraint that would hold with no feature in the repository (`toolchain`, `backend-layering`). A global technical spec is a node like any other; every code node it constrains lists it as a source.
 
 ### Skeleton and format
 
-Same **Spec file** skeleton as `perspectives/AGENTS.md`: `#` the name of what it builds, one purpose sentence, then `##` subjects and `###` rules. Same **Rule format**, **Title** rules, **Anchors**, and postulates P1–P7; the scope test is this section. Spec language is English. The glossary `CONTEXT.md` is consumed, never edited here.
+Same **Spec file** skeleton as `specs/AGENTS.md`: `#` the name of what it builds, one purpose sentence, then `##` subjects and `###` rules. Same **Rule format**, **Title** rules, **Anchors**, and postulates P1–P7; the scope test is this section. Spec language is English. The glossary `CONTEXT.md` is consumed, never edited here.
 
 ```markdown
 # Invite
@@ -38,7 +38,7 @@ How invites are built: placement, persistence, and the HTTP contract.
 
 ### Invite creation endpoint
 
-`POST /invites` **must** create one invite and answer `201` with its id. Serves [Invite expiry](../../../perspectives/business/invite/spec.md#invite-expiry).
+`POST /invites` **must** create one invite and answer `201` with its id. Serves [Invite expiry](../../../specs/business/invite/spec.md#invite-expiry).
 ```
 
 ### Vocabulary
@@ -46,7 +46,7 @@ How invites are built: placement, persistence, and the HTTP contract.
 - Titles stay prose (`Single HTTP client`). A rule that names a library or system tool **states the package** in the body (`acme-http`), with its version when the version is a decision.
 - A rule states **one** decision with `must`, `must not`, `never`, `only`, `prohibited`. Facultative modals (`may`, `can be`, `ideally`, `prefer`), `or equivalent`, and `X or Y` are not a rule.
 - An indirection — interface, port, layer, wrapper, shared helper — is written only with a pain trigger stated in the body: a second real implementation, an anti-corruption layer, or a second real consumer.
-- A rule cites the product rule it serves by title, with a link into `perspectives/`, and never restates it. A global technical spec serves no single product rule and cites none.
+- A rule cites the product rule it serves by title, with a link into `specs/`, and never restates it. A global technical spec serves no single product rule and cites none.
 
 ### Adopted patterns
 
@@ -60,7 +60,7 @@ The `.metadata.json` of a technical spec lists as `sources[].path` the perspecti
 
 These rules govern how source code materializes the specifications. They apply to code under `src/` and do not define product behavior or its technical rules.
 
-Violation is a grave failure. Volume, age, or “already reviewed” does not excuse it. Numbered **C** so they do not collide with the spec postulates **P** in `perspectives/AGENTS.md`.
+Violation is a grave failure. Volume, age, or “already reviewed” does not excuse it. Numbered **C** so they do not collide with the spec postulates **P** in `specs/AGENTS.md`.
 
 **C1 Fidelity.** Code covers the whole rule body — conditions, exceptions, effects, forbidden values — of every product and technical rule the code node lists. Extra-normative behavior is a failure. Partial coverage presented as done is a failure. Ambiguous rule: stop and park a design gap; `/design` closes it or escalates it to `/spec`.
 
@@ -90,7 +90,7 @@ On critical vs common, treat as critical. A suite that breaks on an internal ren
 
 **Done when:** every targeted rule has code that holds C1–C8; each code node written lists its sources; diagnostics show no introduced blocking errors; the unit suite written after the run's code is green; each finished node is synced.
 
-1. **Reach** the root `AGENTS.md` (**Metadata**), this file, and `perspectives/AGENTS.md`. Read the technical spec, the perspective specs it serves, and `CONTEXT.md`. `pending` names the rules that changed and their state.
+1. **Reach** the root `AGENTS.md` (**Metadata**), this file, and `specs/AGENTS.md`. Read the technical spec, the perspective specs it serves, and `CONTEXT.md`. `pending` names the rules that changed and their state.
 2. **Implement** the whole rule body. Place it where the technical spec says (C3, C7). A new directory gets its `.metadata.json` — `{"version": 1, "sources": [...]}`, paths relative to the repository root — then `go run -C .agents/tools ./metadata --write <dir>`. Write no test in this step.
 3. **Sense:** diagnostics (as the root `AGENTS.md` defines them) before the first edit and after each executable edit. Distinguish pre-existing diagnostics from introduced ones. Fix introduced ones. If diagnostics are down, stop and report.
 4. **Test** once every rule in the run has code: band each rule (C2), write its public-surface suite, and run it green. If the test runner is down, stop and report.
@@ -108,7 +108,7 @@ On critical vs common, treat as critical. A suite that breaks on an internal ren
 | C7 | Does every extra file or indirection have a declared trigger? |
 | C8 | Did I invent behavior or pick an open alternative? |
 
-Permissions for implementation: create, edit, and delete code and tests under `src/` outside `src/specs/`; write `sources[].path` of its code nodes' `.metadata.json`; run the metadata tool (never `--approve`, which is `/audit`'s). `/design` owns `src/specs/`; `CONTEXT.md` and `TODO.md` follow the Writing gate of `perspectives/AGENTS.md`, except the `## Design gap` items implementation parks.
+Permissions for implementation: create, edit, and delete code and tests under `src/` outside `src/specs/`; write `sources[].path` of its code nodes' `.metadata.json`; run the metadata tool (never `--approve`, which is `/audit`'s). `/design` owns `src/specs/`; `CONTEXT.md` and `TODO.md` follow the Writing gate of `specs/AGENTS.md`, except the `## Design gap` items implementation parks.
 
 ## Bug autopsy
 

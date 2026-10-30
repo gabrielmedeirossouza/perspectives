@@ -1,7 +1,7 @@
 ---
 name: spec
 description: >-
-  Writes, changes, or removes product rules in perspectives/ — product
+  Writes, changes, or removes product rules in specs/ — product
   policy, flow, screen behavior, UI copy, operational policy — one spec.md
   per feature or perspective, and names the technical items of a request
   (stack, HTTP, persistence, placement, contracts) for /design. Use when
@@ -12,7 +12,7 @@ description: >-
 
 # spec
 
-Reach `perspectives/AGENTS.md` and the nested `AGENTS.md` of the target perspective before scoping or writing. The perspectives that exist are named in `perspectives/AGENTS.md`. Law, tree, rule format, glossary shape, postulates, scope, and metadata live there — not here.
+Reach `specs/AGENTS.md` and the nested `AGENTS.md` of the target perspective before scoping or writing. The perspectives that exist are named in `specs/AGENTS.md`. Law, tree, rule format, glossary shape, postulates, scope, and metadata live there — not here.
 
 One request carries product and technical items. Splitting them is this skill's job, not the user's: the product items are written here; the technical ones are named for `/design`, after the product rules they will serve exist.
 
@@ -32,7 +32,7 @@ $ARGUMENTS
 
 Examples: `/spec add invite expiry`; `/spec user/home:empty list state`; `/spec operator/release:who may promote to production`; `/spec remove invite-by-link`; `/spec brainstorming`; `/spec brainstorming:invite-expiry`.
 
-The argument is a **request**. Path and slug are optional; locate files under `perspectives/` from the text. **No argument = stop.** Do not infer the target from a prior session or a git branch.
+The argument is a **request**. Path and slug are optional; locate files under `specs/` from the text. **No argument = stop.** Do not infer the target from a prior session or a git branch.
 
 ### Brainstorm source
 
@@ -47,7 +47,7 @@ Decisions recorded in the brainstorm are the user's: the interview does not ask 
 1. **Reach** both `AGENTS.md` files. Consult `CONTEXT.md` and `TODO.md`. Read the brainstorm when it is the source.
 2. **Decompose** the request into atomic items. One item asserts one thing. A brainstorm decomposes from its `Candidate items`, `Decisions`, `Flows`, and `Edge cases`.
 3. **Scope** each item by the scope test of the candidate perspective's `AGENTS.md`: a product rule → that perspective, then the owner by step 2 of the **Writing gate**; a technical item → named for `/design`, with the product rule it will serve. No item is handed back to the user as another skill's problem. An item that is neither — code, the law of a folder — is named as out of scope and the rest continues.
-4. **Discover** in the repo: specs under `perspectives/`, technical specs under `src/specs/`, code under `src/`. Facts are not questions. Decisions are the user's. A brainstorm's `Integration` is re-checked against the current specs; it may be stale.
+4. **Discover** in the repo: specs under `specs/`, technical specs under `src/specs/`, code under `src/`. Facts are not questions. Decisions are the user's. A brainstorm's `Integration` is re-checked against the current specs; it may be stale.
 5. **Order** the items: dependencies first — a rule another cites by title comes before the citing one.
 6. **Interview** until shared understanding. One question at a time, in the order of step 5, with a recommendation. Walk every branch; if an answer opens a new one, follow it. Check drafts against the postulates **before** proposing a write.
 7. **Confirm:** "Shall I apply these changes?" Only then the Writing gate.
@@ -56,7 +56,7 @@ Decisions recorded in the brainstorm are the user's: the interview does not ask 
 
 ## Scope
 
-The boundary is **Scope** in `perspectives/AGENTS.md`: a technical item goes to `/design`, which cites the product rule by title.
+The boundary is **Scope** in `specs/AGENTS.md`: a technical item goes to `/design`, which cites the product rule by title.
 
 The interview closes the decision with its branches. `CONTEXT.md` is edited in the same session a term is defined, renamed, or retired; before writing, check the spec uses the canonical term.
 

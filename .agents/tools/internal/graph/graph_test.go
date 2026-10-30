@@ -28,8 +28,8 @@ func gitInit(t *testing.T) string {
 		t.Fatalf("git init: %v %s", err, out)
 	}
 	write(t, root, "AGENTS.md", "# Root\n")
-	write(t, root, ".sdd/.sdd-config.json", `{"version": 0, "paths": {"specs": "perspectives", "src": "src", "technical": "src/specs"}}`+"\n")
-	write(t, root, "perspectives/AGENTS.md", "# Perspectives\n")
+	write(t, root, ".sdd/.sdd-config.json", `{"version": 0, "paths": {"specs": "specs", "src": "src", "technical": "src/specs"}}`+"\n")
+	write(t, root, "specs/AGENTS.md", "# Perspectives\n")
 	write(t, root, "src/AGENTS.md", "# Source\n")
 	return root
 }
@@ -39,14 +39,14 @@ const pSpec = "# Invite\n\nPurpose.\n\n## Expiry\n\n### Invite expiry\n\nThe inv
 func fixture(t *testing.T) string {
 	t.Helper()
 	root := gitInit(t)
-	write(t, root, "perspectives/business/AGENTS.md", "# Business\n")
-	write(t, root, "perspectives/business/invite/spec.md", pSpec)
+	write(t, root, "specs/business/AGENTS.md", "# Business\n")
+	write(t, root, "specs/business/invite/spec.md", pSpec)
 	write(t, root, "src/specs/toolchain/spec.md", "# Toolchain\n\nPurpose.\n\n## Tests\n\n### Vitest as test runner\n\nTests **must** run on `vitest`.\n")
 	write(t, root, "src/specs/toolchain/.metadata.json", `{"version": 1}`+"\n")
 	write(t, root, "src/specs/invite/spec.md", "# Invite\n\nPurpose.\n\n## HTTP\n\n### Invite endpoint\n\n`POST /invites` **must** create one. Serves **Invite expiry**.\n")
-	write(t, root, "src/specs/invite/.metadata.json", `{"version": 1, "sources": [{"path": "perspectives/business/invite"}, {"path": "src/specs/toolchain"}]}`+"\n")
+	write(t, root, "src/specs/invite/.metadata.json", `{"version": 1, "sources": [{"path": "specs/business/invite"}, {"path": "src/specs/toolchain"}]}`+"\n")
 	write(t, root, "src/backend/invite/invite.ts", "export const days = 7;\n")
-	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "src/specs/toolchain"}, {"path": "perspectives/business/invite"}]}`+"\n")
+	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "src/specs/toolchain"}, {"path": "specs/business/invite"}]}`+"\n")
 	return root
 }
 
@@ -79,7 +79,7 @@ func sync(t *testing.T, root, rel string) *Graph {
 func settle(t *testing.T, root string) *Graph {
 	t.Helper()
 	var g *Graph
-	for _, rel := range []string{"perspectives/business/invite", "src/specs/toolchain", "src/specs/invite", "src/backend/invite"} {
+	for _, rel := range []string{"specs/business/invite", "src/specs/toolchain", "src/specs/invite", "src/backend/invite"} {
 		g = sync(t, root, rel)
 	}
 	return g
@@ -100,11 +100,11 @@ func TestUnsettledFixture(t *testing.T) {
 		t.Fatalf("nodes = %d", len(g.Nodes))
 	}
 	drift := g.Drift()
-	if !has(drift, "`perspectives/business/invite/spec.md` has no .metadata.json") || !has(drift, "`src/specs/invite/.metadata.json` does not match") {
+	if !has(drift, "`specs/business/invite/spec.md` has no .metadata.json") || !has(drift, "`src/specs/invite/.metadata.json` does not match") {
 		t.Fatalf("drift = %v", drift)
 	}
 	design := g.Design()
-	if !has(design, "`src/specs/invite` is stale against `perspectives/business/invite`: added \"Invite expiry\", \"Single use\"") {
+	if !has(design, "`src/specs/invite` is stale against `specs/business/invite`: added \"Invite expiry\", \"Single use\"") {
 		t.Fatalf("design = %v", design)
 	}
 	units := g.Units()
@@ -136,26 +136,26 @@ func TestSettledFixtureIsQuiet(t *testing.T) {
 func TestPolicyChangeReachesDesignThenCode(t *testing.T) {
 	root := fixture(t)
 	settle(t, root)
-	write(t, root, "perspectives/business/invite/spec.md", strings.Replace(pSpec, "7 days", "14 days", 1))
+	write(t, root, "specs/business/invite/spec.md", strings.Replace(pSpec, "7 days", "14 days", 1))
 	g := load(t, root)
-	if !has(g.Design(), "`src/specs/invite` is stale against `perspectives/business/invite`: changed \"Invite expiry\"") {
+	if !has(g.Design(), "`src/specs/invite` is stale against `specs/business/invite`: changed \"Invite expiry\"") {
 		t.Fatalf("design = %v", g.Design())
 	}
 	units := g.Units()
 	if len(units) != 1 || units[0].Node.Rel != "src/backend/invite" || !strings.Contains(units[0].Wait, "`src/specs/invite` is stale") {
 		t.Fatalf("units = %+v", units)
 	}
-	if r := units[0].Rules; len(r) != 1 || r[0] != (RuleState{Title: "Invite expiry", State: "changed", Source: "perspectives/business/invite"}) {
+	if r := units[0].Rules; len(r) != 1 || r[0] != (RuleState{Title: "Invite expiry", State: "changed", Source: "specs/business/invite"}) {
 		t.Fatalf("rules = %+v", r)
 	}
 	// /spec writes the metadata, /design acknowledges without changing the technical spec.
-	sync(t, root, "perspectives/business/invite")
+	sync(t, root, "specs/business/invite")
 	g = sync(t, root, "src/specs/invite")
 	if d := g.Design(); len(d) > 0 {
 		t.Fatalf("design = %v", d)
 	}
 	run, wait := g.Batch(5)
-	if len(run) != 1 || len(wait) != 0 || run[0].Node.Rel != "src/backend/invite" || run[0].Reason != "stale against `perspectives/business/invite`" {
+	if len(run) != 1 || len(wait) != 0 || run[0].Node.Rel != "src/backend/invite" || run[0].Reason != "stale against `specs/business/invite`" {
 		t.Fatalf("run = %+v wait = %+v", run, wait)
 	}
 	g = sync(t, root, "src/backend/invite")
@@ -167,12 +167,12 @@ func TestPolicyChangeReachesDesignThenCode(t *testing.T) {
 func TestRenameAndRemove(t *testing.T) {
 	root := fixture(t)
 	settle(t, root)
-	write(t, root, "perspectives/business/invite/spec.md", strings.Replace(pSpec, "### Single use", "### One use", 1))
+	write(t, root, "specs/business/invite/spec.md", strings.Replace(pSpec, "### Single use", "### One use", 1))
 	g := load(t, root)
 	if !has(g.Design(), `renamed "Single use" → "One use"`) {
 		t.Fatalf("design = %v", g.Design())
 	}
-	write(t, root, "perspectives/business/invite/spec.md", pSpec[:strings.Index(pSpec, "### Single use")])
+	write(t, root, "specs/business/invite/spec.md", pSpec[:strings.Index(pSpec, "### Single use")])
 	g = load(t, root)
 	if !has(g.Design(), `removed "Single use"`) {
 		t.Fatalf("design = %v", g.Design())
@@ -185,15 +185,15 @@ func TestRenameAndRemove(t *testing.T) {
 func TestDanglingSource(t *testing.T) {
 	root := fixture(t)
 	settle(t, root)
-	if err := os.RemoveAll(filepath.Join(root, "perspectives/business/invite")); err != nil {
+	if err := os.RemoveAll(filepath.Join(root, "specs/business/invite")); err != nil {
 		t.Fatal(err)
 	}
 	g := load(t, root)
-	if !has(g.Design(), "`src/specs/invite` has a dangling source `perspectives/business/invite`") {
+	if !has(g.Design(), "`src/specs/invite` has a dangling source `specs/business/invite`") {
 		t.Fatalf("design = %v", g.Design())
 	}
 	u := g.Units()
-	if len(u) != 1 || !strings.Contains(u[0].Reason, "dangling source `perspectives/business/invite`") || !strings.Contains(u[0].Wait, "dangling") {
+	if len(u) != 1 || !strings.Contains(u[0].Reason, "dangling source `specs/business/invite`") || !strings.Contains(u[0].Wait, "dangling") {
 		t.Fatalf("units = %+v", u)
 	}
 	if _, err := g.Sync(g.Node("src/specs/invite"), time.Now()); err == nil {
@@ -204,29 +204,29 @@ func TestDanglingSource(t *testing.T) {
 func TestCoverageOfCodeNode(t *testing.T) {
 	root := fixture(t)
 	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "src/specs/toolchain"}]}`+"\n")
-	for _, rel := range []string{"perspectives/business/invite", "src/specs/toolchain", "src/specs/invite"} {
+	for _, rel := range []string{"specs/business/invite", "src/specs/toolchain", "src/specs/invite"} {
 		sync(t, root, rel)
 	}
 	g := load(t, root)
-	if u := g.Units(); len(u) != 1 || !strings.Contains(u[0].Reason, "missing source `perspectives/business/invite`") || has(g.Drift(), "but not") {
+	if u := g.Units(); len(u) != 1 || !strings.Contains(u[0].Reason, "missing source `specs/business/invite`") || has(g.Drift(), "but not") {
 		t.Fatalf("units = %+v drift = %v", u, g.Drift())
 	}
 	if _, err := g.Sync(g.Node("src/backend/invite"), time.Now()); err == nil {
 		t.Fatal("sync accepted a code node missing a served perspective")
 	}
-	write(t, root, "perspectives/user/home/spec.md", "# Home\n\n## S\n\n### Empty list\n\nShows nothing.\n")
-	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "src/specs/toolchain"}, {"path": "perspectives/business/invite"}, {"path": "perspectives/user/home"}]}`+"\n")
+	write(t, root, "specs/user/home/spec.md", "# Home\n\n## S\n\n### Empty list\n\nShows nothing.\n")
+	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "src/specs/toolchain"}, {"path": "specs/business/invite"}, {"path": "specs/user/home"}]}`+"\n")
 	g = load(t, root)
-	if !has(g.Drift(), "`src/backend/invite` lists `perspectives/user/home`, but none of its technical specs serves it") || !has(g.Design(), "`perspectives/user/home` has no technical spec") {
+	if !has(g.Drift(), "`src/backend/invite` lists `specs/user/home`, but none of its technical specs serves it") || !has(g.Design(), "`specs/user/home` has no technical spec") {
 		t.Fatalf("drift = %v design = %v", g.Drift(), g.Design())
 	}
 }
 
 func TestInvalidEdgesUncoveredAndOrphans(t *testing.T) {
 	root := gitInit(t)
-	write(t, root, "perspectives/business/a/spec.md", "# A\n\n## S\n\n### R\n\nx\n")
-	write(t, root, "perspectives/business/a/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/t"}]}`+"\n")
-	write(t, root, "perspectives/business/b/.metadata.json", `{"version": 1}`+"\n")
+	write(t, root, "specs/business/a/spec.md", "# A\n\n## S\n\n### R\n\nx\n")
+	write(t, root, "specs/business/a/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/t"}]}`+"\n")
+	write(t, root, "specs/business/b/.metadata.json", `{"version": 1}`+"\n")
 	write(t, root, "src/specs/t/spec.md", "# T\n\n## S\n\n### R\n\nx\n")
 	write(t, root, "src/specs/t/.metadata.json", `{"version": 1, "sources": [{"path": "src/code"}, {"path": "src/specs/t"}]}`+"\n")
 	write(t, root, "src/code/.metadata.json", `{"version": 2}`+"\n")
@@ -234,8 +234,8 @@ func TestInvalidEdgesUncoveredAndOrphans(t *testing.T) {
 	write(t, root, "src/README.md", "fine\n")
 	d := load(t, root).Drift()
 	for _, want := range []string{
-		"`perspectives/business/a` (perspective) lists `src/specs/t` (technical)",
-		"`perspectives/business/b/.metadata.json` has no spec.md beside it",
+		"`specs/business/a` (perspective) lists `src/specs/t` (technical)",
+		"`specs/business/b/.metadata.json` has no spec.md beside it",
 		"`src/specs/t` (technical) lists `src/code` (code)",
 		"`src/specs/t` lists itself",
 		"`src/code/.metadata.json`: version 2 is not supported",
@@ -283,7 +283,7 @@ func TestBatchOrderAndCap(t *testing.T) {
 func TestRefreshIsStableAndMovesModifiedOnlyOnChange(t *testing.T) {
 	root := fixture(t)
 	g := load(t, root)
-	n := g.Node("perspectives/business/invite")
+	n := g.Node("specs/business/invite")
 	m1, err := Refresh(n, time.Unix(100, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -292,14 +292,14 @@ func TestRefreshIsStableAndMovesModifiedOnlyOnChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	g = load(t, root)
-	n = g.Node("perspectives/business/invite")
+	n = g.Node("specs/business/invite")
 	m2, _ := Refresh(n, time.Unix(200, 0))
 	if written, _ := Save(n, m2); written || m2.Modified != "1970-01-01T00:01:40Z" {
 		t.Fatalf("unchanged content rewrote metadata: written=%v modified=%s", written, m2.Modified)
 	}
-	write(t, root, "perspectives/business/invite/spec.md", pSpec+"\n### Third\n\nz\n")
+	write(t, root, "specs/business/invite/spec.md", pSpec+"\n### Third\n\nz\n")
 	g = load(t, root)
-	m3, _ := Refresh(g.Node("perspectives/business/invite"), time.Unix(300, 0))
+	m3, _ := Refresh(g.Node("specs/business/invite"), time.Unix(300, 0))
 	if m3.Modified != "1970-01-01T00:05:00Z" || m3.Rules["Third"] == "" {
 		t.Fatalf("changed content: %+v", m3)
 	}
@@ -324,7 +324,7 @@ func TestSaveUpdatesGraphForLaterSyncs(t *testing.T) {
 	for _, n := range g.SourcesFirst(g.Nodes) {
 		order = append(order, n.Rel)
 	}
-	if want := "perspectives/business/invite src/specs/toolchain src/specs/invite src/backend/invite"; strings.Join(order, " ") != want {
+	if want := "specs/business/invite src/specs/toolchain src/specs/invite src/backend/invite"; strings.Join(order, " ") != want {
 		t.Fatalf("order = %v", order)
 	}
 }
@@ -360,15 +360,15 @@ func TestStagedListsBothNodesOfARename(t *testing.T) {
 func TestMissingServedPerspectiveIsAnImplementUnit(t *testing.T) {
 	root := fixture(t)
 	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "src/specs/toolchain"}]}`+"\n")
-	for _, rel := range []string{"perspectives/business/invite", "src/specs/toolchain", "src/specs/invite"} {
+	for _, rel := range []string{"specs/business/invite", "src/specs/toolchain", "src/specs/invite"} {
 		sync(t, root, rel)
 	}
 	g := load(t, root)
 	units := g.Units()
-	if len(units) != 1 || units[0].Node.Rel != "src/backend/invite" || !strings.Contains(units[0].Reason, "missing source `perspectives/business/invite` (served by `src/specs/invite`)") {
+	if len(units) != 1 || units[0].Node.Rel != "src/backend/invite" || !strings.Contains(units[0].Reason, "missing source `specs/business/invite` (served by `src/specs/invite`)") {
 		t.Fatalf("units = %+v", units)
 	}
-	if r := units[0].Rules; len(r) != 4 || r[0] != (RuleState{Title: "Invite endpoint", State: "new", Source: "src/specs/invite"}) || r[3] != (RuleState{Title: "Single use", State: "new", Source: "perspectives/business/invite"}) {
+	if r := units[0].Rules; len(r) != 4 || r[0] != (RuleState{Title: "Invite endpoint", State: "new", Source: "src/specs/invite"}) || r[3] != (RuleState{Title: "Single use", State: "new", Source: "specs/business/invite"}) {
 		t.Fatalf("rules = %+v", r)
 	}
 	if has(g.Drift(), "missing") {
@@ -382,11 +382,11 @@ func TestMissingServedPerspectiveIsAnImplementUnit(t *testing.T) {
 func TestSyncRefusesACodeNodeThatWaits(t *testing.T) {
 	root := fixture(t)
 	settle(t, root)
-	write(t, root, "perspectives/business/invite/spec.md", strings.Replace(pSpec, "7 days", "14 days", 1))
-	sync(t, root, "perspectives/business/invite")
+	write(t, root, "specs/business/invite/spec.md", strings.Replace(pSpec, "7 days", "14 days", 1))
+	sync(t, root, "specs/business/invite")
 	g := load(t, root)
 	_, err := g.Sync(g.Node("src/backend/invite"), time.Now())
-	if err == nil || !strings.Contains(err.Error(), "waits: `src/specs/invite` is stale against `perspectives/business/invite` (/design)") {
+	if err == nil || !strings.Contains(err.Error(), "waits: `src/specs/invite` is stale against `specs/business/invite` (/design)") {
 		t.Fatalf("sync accepted a waiting code node: %v", err)
 	}
 }
@@ -394,15 +394,15 @@ func TestSyncRefusesACodeNodeThatWaits(t *testing.T) {
 func TestDanglingSourceListsRecordedRulesAsRemoved(t *testing.T) {
 	root := fixture(t)
 	settle(t, root)
-	if err := os.RemoveAll(filepath.Join(root, "perspectives/business/invite")); err != nil {
+	if err := os.RemoveAll(filepath.Join(root, "specs/business/invite")); err != nil {
 		t.Fatal(err)
 	}
 	g := load(t, root)
-	if !has(g.Design(), "`src/specs/invite` has a dangling source `perspectives/business/invite`: removed \"Invite expiry\", \"Single use\"") {
+	if !has(g.Design(), "`src/specs/invite` has a dangling source `specs/business/invite`: removed \"Invite expiry\", \"Single use\"") {
 		t.Fatalf("design = %v", g.Design())
 	}
 	u := g.Units()
-	if len(u) != 1 || len(u[0].Rules) != 2 || u[0].Rules[0] != (RuleState{Title: "Invite expiry", State: "removed", Source: "perspectives/business/invite"}) {
+	if len(u) != 1 || len(u[0].Rules) != 2 || u[0].Rules[0] != (RuleState{Title: "Invite expiry", State: "removed", Source: "specs/business/invite"}) {
 		t.Fatalf("units = %+v", u)
 	}
 }
@@ -412,7 +412,7 @@ func TestDesignGapParksRulesAndSpecGapAnnotates(t *testing.T) {
 	settle(t, root)
 	write(t, root, "src/specs/invite/spec.md", "# Invite\n\nPurpose.\n\n## HTTP\n\n### Invite endpoint\n\n`POST /invites` **must** create one. Serves **Invite expiry**.\n\n### Token storage\n\nStored somewhere.\n")
 	sync(t, root, "src/specs/invite")
-	write(t, root, "perspectives/TODO.md", "# TODO\n\n## Design gap\n\n- **Token storage** (`src/specs/invite`) names no persistence package.\n- [ ] **Ghost** (`src/specs/invite`) matches nothing.\n\n## Spec gap\n\n- **Invite expiry** (`business/invite`) leaves the grace period undefined.\n- broken line\n")
+	write(t, root, "specs/TODO.md", "# TODO\n\n## Design gap\n\n- **Token storage** (`src/specs/invite`) names no persistence package.\n- [ ] **Ghost** (`src/specs/invite`) matches nothing.\n\n## Spec gap\n\n- **Invite expiry** (`business/invite`) leaves the grace period undefined.\n- broken line\n")
 	g := load(t, root)
 	u := g.Units()
 	if len(u) != 1 || len(u[0].Rules) != 1 || u[0].Rules[0].Parked != "names no persistence package" || u[0].Wait != "every rule is parked under ## Design gap (/design)" {
@@ -425,7 +425,7 @@ func TestDesignGapParksRulesAndSpecGapAnnotates(t *testing.T) {
 	if !has(d, `design gap "Ghost" (`+"`src/specs/invite`"+`) matches no pending rule`) || !has(d, "spec gap out of shape: - broken line") {
 		t.Fatalf("drift = %v", d)
 	}
-	write(t, root, "perspectives/business/invite/spec.md", strings.Replace(pSpec, "7 days", "14 days", 1))
+	write(t, root, "specs/business/invite/spec.md", strings.Replace(pSpec, "7 days", "14 days", 1))
 	g = load(t, root)
 	if !has(g.Design(), `changed "Invite expiry"; "Invite expiry" parked: leaves the grace period undefined (/spec)`) {
 		t.Fatalf("design = %v", g.Design())
@@ -434,10 +434,10 @@ func TestDesignGapParksRulesAndSpecGapAnnotates(t *testing.T) {
 
 func TestRefreshRefusesSpeclessNodes(t *testing.T) {
 	root := gitInit(t)
-	write(t, root, "perspectives/business/b/.metadata.json", `{"version": 1}`+"\n")
+	write(t, root, "specs/business/b/.metadata.json", `{"version": 1}`+"\n")
 	write(t, root, "src/specs/t/.metadata.json", `{"version": 1}`+"\n")
 	g := load(t, root)
-	for _, rel := range []string{"perspectives/business/b", "src/specs/t"} {
+	for _, rel := range []string{"specs/business/b", "src/specs/t"} {
 		if _, err := Refresh(g.Node(rel), time.Now()); err == nil {
 			t.Errorf("refresh accepted spec-less %s", rel)
 		}
@@ -446,7 +446,7 @@ func TestRefreshRefusesSpeclessNodes(t *testing.T) {
 
 func TestGlobalSpecWithoutCodeNodeNamesTheFix(t *testing.T) {
 	root := fixture(t)
-	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "perspectives/business/invite"}]}`+"\n")
+	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "specs/business/invite"}]}`+"\n")
 	g := settle(t, root)
 	u := g.Units()
 	if len(u) != 1 || u[0].Node.Rel != "src/specs/toolchain" || u[0].Reason != "no code node lists it; list it from the code nodes it constrains" {
@@ -493,8 +493,8 @@ func readFile(t *testing.T, root, rel string) []byte {
 
 func TestCodeNodeWithoutTechnicalSpecIsDrift(t *testing.T) {
 	root := fixture(t)
-	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "perspectives/business/invite"}]}`+"\n")
-	for _, rel := range []string{"perspectives/business/invite", "src/specs/toolchain", "src/specs/invite"} {
+	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "specs/business/invite"}]}`+"\n")
+	for _, rel := range []string{"specs/business/invite", "src/specs/toolchain", "src/specs/invite"} {
 		sync(t, root, rel)
 	}
 	g := load(t, root)
@@ -521,7 +521,7 @@ func TestCodeNodeWithoutTechnicalSpecIsDrift(t *testing.T) {
 		t.Fatalf("no technical spec must not block the judge: %+v drift=%v", s, g.Drift())
 	}
 	// A dangling technical source is reported as dangling only.
-	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/gone"}, {"path": "perspectives/business/invite"}]}`+"\n")
+	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/gone"}, {"path": "specs/business/invite"}]}`+"\n")
 	g = load(t, root)
 	if d := g.Drift(); has(d, "no technical spec") || has(d, "none of its technical specs serves it") {
 		t.Fatalf("dangling technical source reported as another drift: %v", d)
@@ -544,7 +544,7 @@ func TestAuditedStartsAtZeroAndResetsOnContentChangeOrNewSource(t *testing.T) {
 	root := fixture(t)
 	g := settle(t, root)
 	c := g.Node("src/backend/invite")
-	if c.Meta.Audited == nil || *c.Meta.Audited != 0 || g.Node("src/specs/invite").Meta.Audited != nil || g.Node("perspectives/business/invite").Meta.Audited != nil {
+	if c.Meta.Audited == nil || *c.Meta.Audited != 0 || g.Node("src/specs/invite").Meta.Audited != nil || g.Node("specs/business/invite").Meta.Audited != nil {
 		t.Fatalf("audited after settle: code=%v technical=%v", c.Meta.Audited, g.Node("src/specs/invite").Meta.Audited)
 	}
 	if s := g.AuditOf(c); !s.Owed() {
@@ -608,8 +608,8 @@ func TestApproveRefusals(t *testing.T) {
 		t.Fatalf("approve accepted a moved hash: %v", err)
 	}
 	write(t, root, "src/backend/invite/invite.ts", "export const days = 7;\n")
-	write(t, root, "perspectives/business/invite/spec.md", strings.Replace(pSpec, "7 days", "14 days", 1))
-	sync(t, root, "perspectives/business/invite")
+	write(t, root, "specs/business/invite/spec.md", strings.Replace(pSpec, "7 days", "14 days", 1))
+	sync(t, root, "specs/business/invite")
 	g = load(t, root)
 	if _, err := g.Approve(g.Node("src/backend/invite"), time.Now()); err == nil || !strings.Contains(err.Error(), "/implement unit (stale against") {
 		t.Fatalf("approve accepted a stale node: %v", err)
@@ -618,7 +618,7 @@ func TestApproveRefusals(t *testing.T) {
 
 func TestApproveAcceptsANodeThatOnlyWaits(t *testing.T) {
 	root := fixture(t)
-	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "perspectives/business/invite"}]}`+"\n")
+	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "specs/business/invite"}]}`+"\n")
 	settle(t, root)
 	write(t, root, "src/specs/toolchain/spec.md", "# Toolchain\n\nPurpose.\n\n## Tests\n\n### Vitest as test runner\n\nTests **must** run on `vitest` 2.\n")
 	sync(t, root, "src/specs/toolchain")
@@ -639,11 +639,11 @@ func TestDossierTiersCandidatesAndNamesCorrections(t *testing.T) {
 	write(t, root, "src/specs/http-client/spec.md", "# HTTP client\n\nHow HTTP calls are made.\n\n## Client\n\n### Single client\n\nCode under `src/backend/invite/` **must** use `acme-http`.\n")
 	write(t, root, "src/specs/http-client/.metadata.json", `{"version": 1}`+"\n")
 	write(t, root, "src/specs/other/spec.md", "# Other\n\nSomething else entirely.\n\n## S\n\n### Other rule\n\nx\n")
-	write(t, root, "src/specs/other/.metadata.json", `{"version": 1, "sources": [{"path": "perspectives/business/invite"}]}`+"\n")
-	write(t, root, "perspectives/user/home/spec.md", "# Home\n\nPurpose.\n\n## S\n\n### Empty list\n\nShows nothing.\n")
-	write(t, root, "src/specs/invite/.metadata.json", `{"version": 1, "sources": [{"path": "perspectives/business/invite"}, {"path": "perspectives/user/home"}, {"path": "src/specs/toolchain"}]}`+"\n")
-	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "perspectives/business/invite"}]}`+"\n")
-	for _, rel := range []string{"perspectives/business/invite", "perspectives/user/home", "src/specs/toolchain", "src/specs/http-client", "src/specs/other", "src/specs/invite"} {
+	write(t, root, "src/specs/other/.metadata.json", `{"version": 1, "sources": [{"path": "specs/business/invite"}]}`+"\n")
+	write(t, root, "specs/user/home/spec.md", "# Home\n\nPurpose.\n\n## S\n\n### Empty list\n\nShows nothing.\n")
+	write(t, root, "src/specs/invite/.metadata.json", `{"version": 1, "sources": [{"path": "specs/business/invite"}, {"path": "specs/user/home"}, {"path": "src/specs/toolchain"}]}`+"\n")
+	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "specs/business/invite"}]}`+"\n")
+	for _, rel := range []string{"specs/business/invite", "specs/user/home", "src/specs/toolchain", "src/specs/http-client", "src/specs/other", "src/specs/invite"} {
 		sync(t, root, rel)
 	}
 	g := load(t, root)
@@ -665,13 +665,13 @@ func TestDossierTiersCandidatesAndNamesCorrections(t *testing.T) {
 	if s := d.State; s.Unit == "" || s.Owed() {
 		t.Fatalf("a missing served perspective is /implement's first: %+v", s)
 	}
-	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "perspectives/business/invite"}, {"path": "perspectives/user/home"}]}`+"\n")
+	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "specs/business/invite"}, {"path": "specs/user/home"}]}`+"\n")
 	sync(t, root, "src/backend/invite")
-	write(t, root, "src/specs/invite/.metadata.json", `{"version": 1, "sources": [{"path": "perspectives/business/invite"}, {"path": "src/specs/toolchain"}]}`+"\n")
+	write(t, root, "src/specs/invite/.metadata.json", `{"version": 1, "sources": [{"path": "specs/business/invite"}, {"path": "src/specs/toolchain"}]}`+"\n")
 	sync(t, root, "src/specs/invite")
 	g = load(t, root)
 	d = g.Dossier(g.Node("src/backend/invite"))
-	if len(d.DropPerspectives) != 1 || d.DropPerspectives[0] != "`perspectives/user/home` (none of its technical specs serves it)" {
+	if len(d.DropPerspectives) != 1 || d.DropPerspectives[0] != "`specs/user/home` (none of its technical specs serves it)" {
 		t.Fatalf("drop = %+v", d.DropPerspectives)
 	}
 	if nodes := g.CodeNodesUnder("src/backend"); len(nodes) != 1 || nodes[0].Rel != "src/backend/invite" || len(g.CodeNodesUnder("src/specs")) != 0 {
@@ -688,7 +688,7 @@ func TestNamesReMatchesWholePathTokens(t *testing.T) {
 		"Not src/backend/invitee.":                     false,
 		"Not src/backend/invite/deeper either.":        false,
 		"Only src/ in general.":                        false,
-		"Links to perspectives/business/invite.":       false,
+		"Links to specs/business/invite.":       false,
 	} {
 		if got := re.MatchString(text); got != want {
 			t.Errorf("%q: names = %v, want %v", text, got, want)
@@ -702,7 +702,7 @@ func TestNamesReMatchesWholePathTokens(t *testing.T) {
 func TestAuditGapParksANodeAndOrphansAreDrift(t *testing.T) {
 	root := fixture(t)
 	settle(t, root)
-	write(t, root, "perspectives/TODO.md", "# TODO\n\n## Audit gap\n\n- **Rate limiting** (`src/backend/invite`) code obeys a limit no technical spec states.\n- **Ghost** (`src/nowhere`) nothing.\n")
+	write(t, root, "specs/TODO.md", "# TODO\n\n## Audit gap\n\n- **Rate limiting** (`src/backend/invite`) code obeys a limit no technical spec states.\n- **Ghost** (`src/nowhere`) nothing.\n")
 	g := load(t, root)
 	s := g.AuditOf(g.Node("src/backend/invite"))
 	if s.Parked != "code obeys a limit no technical spec states" || s.Owed() {
@@ -724,7 +724,7 @@ func TestAuditGapMayNameTheRootCodeNode(t *testing.T) {
 	write(t, root, "src/go.mod", "module x\n")
 	settle(t, root)
 	sync(t, root, "src")
-	write(t, root, "perspectives/TODO.md", "# TODO\n\n## Audit gap\n\n- **Root manifests** (`src`) nothing decides them.\n")
+	write(t, root, "specs/TODO.md", "# TODO\n\n## Audit gap\n\n- **Root manifests** (`src`) nothing decides them.\n")
 	g := load(t, root)
 	if s := g.AuditOf(g.Node("src")); s.Parked != "nothing decides them" {
 		t.Fatalf("state = %+v", s)
@@ -736,7 +736,7 @@ func TestAuditGapMayNameTheRootCodeNode(t *testing.T) {
 
 func TestApproveOnANeverWrittenSkeletonNamesTheDrift(t *testing.T) {
 	root := fixture(t)
-	for _, rel := range []string{"perspectives/business/invite", "src/specs/toolchain", "src/specs/invite"} {
+	for _, rel := range []string{"specs/business/invite", "src/specs/toolchain", "src/specs/invite"} {
 		sync(t, root, rel)
 	}
 	g := load(t, root)

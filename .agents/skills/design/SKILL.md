@@ -12,7 +12,7 @@ description: >-
 
 # design
 
-Reach the root `AGENTS.md` (**Metadata**), `src/AGENTS.md` (**Technical spec**), and `perspectives/AGENTS.md` before writing. The tree, the scope test, the skeleton, the vocabulary, and the sources law live there — not here. A technical spec says how; the product rules it serves say what, and are not edited here.
+Reach the root `AGENTS.md` (**Metadata**), `src/AGENTS.md` (**Technical spec**), and `specs/AGENTS.md` before writing. The tree, the scope test, the skeleton, the vocabulary, and the sources law live there — not here. A technical spec says how; the product rules it serves say what, and are not edited here.
 
 ## User Input
 
@@ -56,4 +56,4 @@ The argument is a **request**. The name is optional; locate the technical spec f
 
 Postulate violation: name the P, the passage, the recommended fix. Vocabulary violation: the facultative modal, `or equivalent`, or `X or Y` to replace by one decision.
 
-Permissions: create, edit, and delete `src/specs/<name>/spec.md` with its directory, and the `sources[].path` of its `.metadata.json`; run the metadata tool (never `--approve`, which is `/audit`'s); edit `TODO.md` (`## Spec gap`, `## Design gap`, and the `## Audit gap` items a write closes). Out of scope: `perspectives/` (`/spec`); code and code nodes under `src/` (`/implement`); `CONTEXT.md`; any hash in a `.metadata.json`.
+Permissions: create, edit, and delete `src/specs/<name>/spec.md` with its directory, and the `sources[].path` of its `.metadata.json`; run the metadata tool (never `--approve`, which is `/audit`'s); edit `TODO.md` (`## Spec gap`, `## Design gap`, and the `## Audit gap` items a write closes). Out of scope: `specs/` (`/spec`); code and code nodes under `src/` (`/implement`); `CONTEXT.md`; any hash in a `.metadata.json`.

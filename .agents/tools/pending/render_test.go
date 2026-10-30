@@ -27,8 +27,8 @@ func gitInit(t *testing.T) string {
 		t.Fatalf("git init: %v %s", err, out)
 	}
 	write(t, root, "AGENTS.md", "# Root\n")
-	write(t, root, ".sdd/.sdd-config.json", `{"version": 0, "paths": {"specs": "perspectives", "src": "src", "technical": "src/specs"}}`+"\n")
-	write(t, root, "perspectives/AGENTS.md", "# P\n")
+	write(t, root, ".sdd/.sdd-config.json", `{"version": 0, "paths": {"specs": "specs", "src": "src", "technical": "src/specs"}}`+"\n")
+	write(t, root, "specs/AGENTS.md", "# P\n")
 	return root
 }
 
@@ -77,10 +77,10 @@ func approve(t *testing.T, root, rel string) {
 
 func TestBatchModeNamesDesignWorkWhenNothingCanBeImplemented(t *testing.T) {
 	root := gitInit(t)
-	write(t, root, "perspectives/business/invite/spec.md", "# Invite\n\n## S\n\n### R\n\nx\n")
+	write(t, root, "specs/business/invite/spec.md", "# Invite\n\n## S\n\n### R\n\nx\n")
 	g := load(t, root)
 	out := render(g, true)
-	for _, want := range []string{"# Next batch: none", "Nothing to implement; /design owes:", "- `perspectives/business/invite` has no technical spec", "# Drift"} {
+	for _, want := range []string{"# Next batch: none", "Nothing to implement; /design owes:", "- `specs/business/invite` has no technical spec", "# Drift"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("batch output lacks %q:\n%s", want, out)
 		}
@@ -97,16 +97,16 @@ const pSpec = "# Invite\n\nPurpose.\n\n## S\n\n### Invite expiry\n\nx\n"
 func auditFixture(t *testing.T) string {
 	t.Helper()
 	root := gitInit(t)
-	write(t, root, "perspectives/business/invite/spec.md", pSpec)
+	write(t, root, "specs/business/invite/spec.md", pSpec)
 	write(t, root, "src/specs/toolchain/spec.md", "# Toolchain\n\nThe toolchain of every module.\n\n## Place\n\n### Backend placement\n\nModules live under `src/backend/`.\n")
 	write(t, root, "src/specs/toolchain/.metadata.json", `{"version": 1}`+"\n")
 	write(t, root, "src/specs/invite/spec.md", "# Invite\n\nHow invites are built.\n\n## HTTP\n\n### Invite endpoint\n\nx\n")
-	write(t, root, "src/specs/invite/.metadata.json", `{"version": 1, "sources": [{"path": "perspectives/business/invite"}]}`+"\n")
+	write(t, root, "src/specs/invite/.metadata.json", `{"version": 1, "sources": [{"path": "specs/business/invite"}]}`+"\n")
 	write(t, root, "src/backend/invite/invite.ts", "x\n")
-	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "perspectives/business/invite"}]}`+"\n")
+	write(t, root, "src/backend/invite/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/invite"}, {"path": "specs/business/invite"}]}`+"\n")
 	write(t, root, "src/go.mod", "module x\n")
 	write(t, root, "src/.metadata.json", `{"version": 1, "sources": [{"path": "src/specs/toolchain"}]}`+"\n")
-	sync(t, root, "perspectives/business/invite", "src/specs/toolchain", "src/specs/invite", "src/backend/invite", "src")
+	sync(t, root, "specs/business/invite", "src/specs/toolchain", "src/specs/invite", "src/backend/invite", "src")
 	approve(t, root, "src")
 	return root
 }
@@ -130,7 +130,7 @@ func TestAuditSectionAndDossier(t *testing.T) {
 		"# Audit\n\n- `src` audited 1; skipped (--all re-audits)\n\n## `src/backend/invite` — audited 0",
 		"Files:\n- invite.ts",
 		"Listed technical specs:\n- `src/specs/invite`: \"Invite endpoint\"",
-		"Listed perspective specs:\n- `perspectives/business/invite`",
+		"Listed perspective specs:\n- `specs/business/invite`",
 		"Candidates:\n- `src/specs/toolchain` — names this directory; global; The toolchain of every module.",
 	} {
 		if !strings.Contains(out, want) {
@@ -159,7 +159,7 @@ func TestAuditSectionAndDossier(t *testing.T) {
 		t.Fatalf("--all output:\n%s", out)
 	}
 	// Parked: content changed and written, a gap names the node.
-	write(t, root, "perspectives/TODO.md", "# TODO\n\n## Audit gap\n\n- **Ghost** (`src/backend/invite`) nothing fits.\n")
+	write(t, root, "specs/TODO.md", "# TODO\n\n## Audit gap\n\n- **Ghost** (`src/backend/invite`) nothing fits.\n")
 	write(t, root, "src/backend/invite/invite.ts", "y\n")
 	refresh(t, root, "src/backend/invite")
 	g = load(t, root)
@@ -184,16 +184,16 @@ func TestAuditSectionAndDossier(t *testing.T) {
 		t.Fatalf("blocked --all output:\n%s", out)
 	}
 	// Approved, then its spec changed: after /implement, never "skipped".
-	write(t, root, "perspectives/TODO.md", "# TODO\n")
+	write(t, root, "specs/TODO.md", "# TODO\n")
 	refresh(t, root, "src/backend/invite")
 	approve(t, root, "src/backend/invite")
-	write(t, root, "perspectives/business/invite/spec.md", strings.Replace(pSpec, "\nx\n", "\ny\n", 1))
-	sync(t, root, "perspectives/business/invite")
+	write(t, root, "specs/business/invite/spec.md", strings.Replace(pSpec, "\nx\n", "\ny\n", 1))
+	sync(t, root, "specs/business/invite")
 	g = load(t, root)
 	targets, _ = codeNodes(g, []string{"src/backend"})
 	for _, all := range []bool{false, true} {
 		out := renderAudit(g, all, targets)
-		if !strings.Contains(out, "- `src/backend/invite` not judged — after /implement: stale against `perspectives/business/invite`") || strings.Contains(out, "skipped") || strings.Contains(out, "## `src/backend/invite`") {
+		if !strings.Contains(out, "- `src/backend/invite` not judged — after /implement: stale against `specs/business/invite`") || strings.Contains(out, "skipped") || strings.Contains(out, "## `src/backend/invite`") {
 			t.Fatalf("approved-then-stale (all=%v):\n%s", all, out)
 		}
 	}

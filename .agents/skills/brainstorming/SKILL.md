@@ -2,7 +2,7 @@
 name: brainstorming
 description: >-
   Refines one or more ideas against the current architecture and the specs
-  in perspectives/ — framing, holes, conflicts, integration — questioning
+  in specs/ — framing, holes, conflicts, integration — questioning
   the user on every decision, and optionally materializes the result in
   .sdd/brainstorming/<name>.md for /spec and /prototype. Use when the user
   wants to discuss, refine, or stress-test an idea or feature before it
@@ -11,9 +11,9 @@ description: >-
 
 # brainstorming
 
-Reach `perspectives/AGENTS.md` and `src/AGENTS.md` before framing the idea. Spec law, perspectives, scope, and postulates live in the first; the technical spec law, the source tree, and the implementation postulates in the second. The working-file law of `.sdd/` is in the root `AGENTS.md`.
+Reach `specs/AGENTS.md` and `src/AGENTS.md` before framing the idea. Spec law, perspectives, scope, and postulates live in the first; the technical spec law, the source tree, and the implementation postulates in the second. The working-file law of `.sdd/` is in the root `AGENTS.md`.
 
-A brainstorm is a draft, not a rule. It never overrides `perspectives/`; it prepares the request `/spec` writes and the idea `/prototype` tries.
+A brainstorm is a draft, not a rule. It never overrides `specs/`; it prepares the request `/spec` writes and the idea `/prototype` tries.
 
 ## User Input
 
@@ -38,7 +38,7 @@ A bare `<name>` that matches `.sdd/brainstorming/<name>.md` loads that brainstor
 **Done when:** every hole found is decided or listed under `Open questions`; the user has decided whether to materialize; if yes, the file is written to **Shape**.
 
 1. **Reach** both `AGENTS.md` files, the nested `AGENTS.md` of every perspective the idea touches, `CONTEXT.md`, and `TODO.md`. Load the brainstorm when `<name>` names one.
-2. **Discover** in the repo: specs under `perspectives/`, technical specs under `src/specs/`, code under `src/`, package manifests, and the other files in `.sdd/brainstorming/` (overlap). Facts are not questions. Decisions are the user's.
+2. **Discover** in the repo: specs under `specs/`, technical specs under `src/specs/`, code under `src/`, package manifests, and the other files in `.sdd/brainstorming/` (overlap). Facts are not questions. Decisions are the user's.
 3. **Frame** the idea: problem, goal, non-goals. Several ideas → frame each, then name how they relate.
 4. **Challenge** until shared understanding. One question at a time, with a recommendation. Walk every branch; if an answer opens a new one, follow it. Hunt for:
    - flow holes and undefined real paths;
@@ -79,7 +79,7 @@ The file is written in the language of the conversation. Rule titles, `CONTEXT.m
 ## Flows
 ## Edge cases
 ## Integration
-- **<Rule title>** (`perspectives/<perspective>/<feature>/spec.md`): <how it is touched; conflict and resolution>
+- **<Rule title>** (`specs/<perspective>/<feature>/spec.md`): <how it is touched; conflict and resolution>
 ## Candidate items
 - <atomic item> — `<perspective>/<feature>` or `src/specs/<name>`
 ## Glossary candidates
@@ -88,4 +88,4 @@ The file is written in the language of the conversation. Rule titles, `CONTEXT.m
 
 `Decisions` holds only what the user decided. A recommendation the user did not accept is not a decision; it stays an open question.
 
-Permissions: create, edit, and delete files under `.sdd/brainstorming/`. Out of scope: spec files under `perspectives/` and `src/specs/`, `.metadata.json`, `CONTEXT.md`, `TODO.md`, code under `src/`. Product specs are `/spec`, technical specs `/design`; code is `/implement` or `/prototype`.
+Permissions: create, edit, and delete files under `.sdd/brainstorming/`. Out of scope: spec files under `specs/` and `src/specs/`, `.metadata.json`, `CONTEXT.md`, `TODO.md`, code under `src/`. Product specs are `/spec`, technical specs `/design`; code is `/implement` or `/prototype`.

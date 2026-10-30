@@ -1,4 +1,4 @@
-Perspectives (`perspectives/`) are the product source of truth: what the system does, for whom. Technical specs (`src/specs/`) say how it is built. Code (`src/`) materializes both. Reach `perspectives/AGENTS.md` for product behavior or specs, `src/AGENTS.md` for technical specs or code. Every spec directory and every code directory `/implement` declares is a node of **Metadata**; `pending` is the observer that reads them.
+Product specs (`specs/`) are the product source of truth: what the system does, for whom, one perspective per actor. Technical specs (`src/specs/`) say how it is built. Code (`src/`) materializes both. Reach `specs/AGENTS.md` for product behavior or specs, `src/AGENTS.md` for technical specs or code. Every spec directory and every code directory `/implement` declares is a node of **Metadata**; `pending` is the observer that reads them.
 
 ## Harnesses
 
@@ -12,9 +12,9 @@ A skill that delegates uses the harness's subagent tool: `Task` in Cursor, `Agen
 
 ## Working files
 
-`.sdd/` holds working files of the flow `/brainstorming` → `/prototype` → `/spec` → `/design` → `/implement`, never rules. `perspectives/` and `src/specs/` stay the source of truth; a brainstorm never overrides a rule.
+`.sdd/` holds working files of the flow `/brainstorming` → `/prototype` → `/spec` → `/design` → `/implement`, never rules. `specs/` and `src/specs/` stay the source of truth; a brainstorm never overrides a rule.
 
-- `.sdd/.sdd-config.json`: the framework version this repository is on, the remote it came from, and the layout the tools read: `paths.specs` (product specs, `perspectives/`), `paths.src` (code, `src/`), `paths.technical` (technical specs, `src/specs/`). The file marks the repository root for every tool; a path left out takes the default in parentheses.
+- `.sdd/.sdd-config.json`: the framework version this repository is on, the remote it came from, and the layout the tools read: `paths.specs` (product specs, `specs/`), `paths.src` (code, `src/`), `paths.technical` (technical specs, `src/specs/`). The file marks the repository root for every tool; a path left out takes the default in parentheses.
 - `.sdd/brainstorming/<name>.md`: versioned draft of an idea. `/brainstorming` writes it, `/prototype` reads it, `/spec` consumes and deletes it.
 - `.sdd/prototypes/`: git-ignored. One worktree and one manifest per prototype, owned by `/prototype`.
 
@@ -23,7 +23,7 @@ A skill that delegates uses the harness's subagent tool: `Task` in Cursor, `Agen
 `.agents/tools/` holds procedures agents turned into code, in Go, so a later session runs them instead of redoing them by hand. Its law and catalog are in `.agents/tools/AGENTS.md`. Reach it before any mechanical procedure over the repository — a scan, a cross-check, a lookup.
 
 - **Reuse.** A catalog entry answers the question → run it; do not redo it by hand. Wrong or incomplete output → fix the tool in the same session; do not work around it.
-- **Create.** A session that performs by hand a deterministic procedure — same inputs, same answer, no judgment — that a later session will repeat, such as a skill step or a scan over `perspectives/`, writes it as a tool, runs it against the repository, and adds its catalog row, in the same session.
+- **Create.** A session that performs by hand a deterministic procedure — same inputs, same answer, no judgment — that a later session will repeat, such as a skill step or a scan over `specs/`, writes it as a tool, runs it against the repository, and adds its catalog row, in the same session.
 - **One tool per question.** A neighboring question becomes a flag of the existing tool, not a second tool.
 - **Judgment is not a tool.** A recurring procedure that needs judgment goes in the report as a proposed skill change.
 - **Read-only.** A tool reports; the skill writes. The one exception is `.metadata.json`, which `metadata` writes beyond the skeleton a skill authors: `version` and `sources[].path`.
@@ -34,7 +34,7 @@ Scripts and tooling of this repository are written in Go, standard library only;
 
 Sync between a spec and what consumes it is not written by hand. Every consumer records the version of each source it last validated against; a tool computes what is stale. Nothing records what consumes it.
 
-**Node** = a directory with `.metadata.json`. Under `perspectives/`, every directory holding `spec.md` is a node, and the tool creates its file. Under `src/`, a node is declared by the skill that writes its `.metadata.json`. Kinds, by place in the layout of `.sdd/.sdd-config.json`: **perspective** under the specs root (`perspectives/`), **technical** under the technical root (`src/specs/`), **code** elsewhere under the code root (`src/`). `src/` itself may be a code node: the one that holds the root manifests and configuration a global technical spec decides (`go.mod`, `package.json`, lockfiles, compiler settings).
+**Node** = a directory with `.metadata.json`. Under `specs/`, every directory holding `spec.md` is a node, and the tool creates its file. Under `src/`, a node is declared by the skill that writes its `.metadata.json`. Kinds, by place in the layout of `.sdd/.sdd-config.json`: **perspective** under the specs root (`specs/`), **technical** under the technical root (`src/specs/`), **code** elsewhere under the code root (`src/`). `src/` itself may be a code node: the one that holds the root manifests and configuration a global technical spec decides (`go.mod`, `package.json`, lockfiles, compiler settings).
 
 **Content** = every regular file git tracks or would track (not ignored) under the node's directory, recursively, except `.metadata.json`, `AGENTS.md`, the files directly under `src/` ending in `.md` (chrome), and the subtrees of other nodes. **Hash** = sha256 of the sorted entries `<path relative to the node>\0<sha256 of the bytes>\n`. Raw bytes, no normalization. **Rules**, when the node holds `spec.md`: each `###` title outside code fences → sha256 of its body, the lines up to the next heading of level 1–3 with blank lines at both ends removed. The title stays outside its hash, so a rename is told from a change.
 
@@ -51,7 +51,7 @@ Every field, for illustration; which ones a node carries depends on its kind, as
   "audited": 0,
   "rules": { "<title>": "<sha256 of the body>" },
   "sources": [
-    { "path": "perspectives/business/invite", "hash": "<hash the source had at the last sync>", "rules": { "<title>": "<hash>" } }
+    { "path": "specs/business/invite", "hash": "<hash the source had at the last sync>", "rules": { "<title>": "<hash>" } }
   ]
 }
 ```
@@ -75,7 +75,7 @@ Every field, for illustration; which ones a node carries depends on its kind, as
 
 | Writer | Writes | Then runs |
 |--------|--------|-----------|
-| `/spec` | `perspectives/**/spec.md` | `metadata --write <dir>` |
+| `/spec` | `specs/**/spec.md` | `metadata --write <dir>` |
 | `/design` | `src/specs/<name>/spec.md` and the `sources[].path` of its node | `metadata --sync <dir>`, also to acknowledge a stale source that needs no change |
 | `/implement` | code and the `sources[].path` of its code nodes: a new node, a perspective node its technical specs came to serve, a dangling source dropped | `metadata --write` on a new node; `metadata --sync <dir>` only after the Implementation gate |
 | `/audit` | the `sources[].path` of a code node on a judge's verdict — a technical spec the code obeys added, one whose placement puts the code elsewhere dropped, and the perspective nodes that follow — and `## Audit gap` of `TODO.md` | `metadata --write <dir>` on a node it changed; `metadata --approve <dir>` on a node the judge approved as listed |
