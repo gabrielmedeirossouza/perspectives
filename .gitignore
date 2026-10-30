@@ -14,3 +14,8 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Installed packages, build output, local databases (Ignored artifacts, src/specs/toolchain)
+node_modules/
+dist/
+*.db

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "algorithm": "sha256",
+  "hash": "c892c3bda3a21d020f8b713b0c7955288c38471d3bcb6136488af96238f9c653",
+  "modified": "2026-10-30T18:50:53Z",
+  "audited": 1,
+  "sources": [
+    {
+      "path": "src/specs/toolchain",
+      "hash": "e72b02efc296860fdd263e6fb843247cefae1eba0a45eb929b6aad3bdb4f0e69",
+      "rules": {
+        "Fastify as the HTTP server": "18343f25dfdb2ec6acf90b848d7cadcf2e671893f1c2442ae7568b70925ae875",
+        "Ignored artifacts": "4eafe15044967cb674276247fb892d1cb8e525a0299a9a033e01791ba1629cb7",
+        "Node.js 26 and TypeScript 5": "f4c94dd7052663399125cadf18a0212eb511b07eb073a52b05d5ca5e4dc993bb",
+        "One directory per app": "1a1730689899f06d7187f418bdb1a9ebb0aab494ddad4353ff713cf4c1431a3d",
+        "React on Vite": "1295c04af675db4b1295d77efa876b7e857ce9dc3a2105780056403dcee7c0b1",
+        "Vitest as the test runner": "f6f469f140a6c4ef26ce050a5a2c56e6db9ef33dbadbf362629d5a711ea891b2",
+        "npm workspaces under src": "6163422af0120b8d34bafb857d98f6b2d6aed506713ba531b46699399163df02"
+      }
+    }
+  ]
+}

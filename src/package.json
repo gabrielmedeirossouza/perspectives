@@ -1,0 +1,10 @@
+{
+  "name": "ledger",
+  "private": true,
+  "workspaces": ["api", "web"],
+  "scripts": {
+    "test": "npm run test --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "build": "npm run build --workspaces"
+  }
+}
