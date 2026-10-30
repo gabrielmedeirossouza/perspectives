@@ -16,7 +16,7 @@ A skill that delegates uses the harness's subagent tool: `Task` in Cursor, `Agen
 
 `.sdd/` holds the configuration the tools read and the working files of the flow `/sdd-brainstorming` → `/sdd-prototype` → `/sdd-spec` → `/sdd-design` → `/sdd-implement`, never rules. `specs/` and `src/specs/` stay the source of truth; a brainstorm never overrides a rule.
 
-- `.sdd/.sdd-config.json`: the framework version this repository is on, the remote it came from, and the layout the tools read: `paths.specs` (product specs, `specs/`), `paths.src` (code, `src/`), `paths.technical` (technical specs, `src/specs/`). The file marks the repository root for every tool; a path left out takes the default in parentheses. `perspectives` names each perspective of this product with the framework kind it came from, mirrored by `specs/PERSPECTIVES.md` and written by `/sdd-spec` (**Perspectives** in `specs/AGENTS.md`); `skills` names the skills kept, absent for all; `/sdd-update-framework` moves `version`; `paths` is set at the bootstrap and not moved afterwards.
+- `.sdd/.sdd-config.json`: the framework version this repository is on, the remote it came from, and the layout the tools read: `paths.specs` (the product specs), `paths.src` (the code), `paths.technical` (the technical specs). The file marks the repository root for every tool; a path left out takes the layout the framework ships. `perspectives` names each perspective of this product with the framework kind it came from, mirrored by `specs/PERSPECTIVES.md` and written by `/sdd-spec` (**Perspectives** in `specs/AGENTS.md`), absent for every shipped kind; `skills` names the skills kept, absent for all; the two are the one record of what this project keeps from the framework, so a file removed by hand comes back at the next update; `/sdd-update-framework` moves `version`; `paths` is set at the bootstrap and not moved afterwards.
 - `.sdd/brainstorming/<name>.md`: versioned draft of an idea. `/sdd-brainstorming` writes it, `/sdd-prototype` reads it, `/sdd-spec` consumes and deletes it.
 - `.sdd/prototypes/`: git-ignored. One worktree and one manifest per prototype, owned by `/sdd-prototype`.
 
@@ -58,7 +58,7 @@ Every field, for illustration; which ones a node carries depends on its kind, as
 }
 ```
 
-`modified` moves only when `hash` moves. `audited` is present only on a code node (**Audit** below). `rules` is absent without `spec.md`; `sources` is absent on a perspective node and empty on a global technical node. A skill writes only the skeleton — `version` and `sources[].path`; every hash and `audited` are the tool's. The file is never edited by hand beyond those fields.
+`modified` moves only when `hash` moves. `audited` is present only on a code node (**Audit** below). `rules` is absent without `spec.md`; `sources` is absent on a perspective node and on a global technical node, which lists none. A skill writes only the skeleton — `version` and `sources[].path`; every hash and `audited` are the tool's. The file is never edited by hand beyond those fields.
 
 **States**, computed by `pending`, never stored:
 
