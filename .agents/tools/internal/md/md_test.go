@@ -66,16 +66,17 @@ func TestLinksSkipFencesAndCodeSpans(t *testing.T) {
 		"```\n[fenced](f.md)\n```\n" +
 		"[web](https://example.com) [self](#own) \\[esc\\](escaped.md) a ` lone [F](f.md)\n" +
 		"[ref]: ../r/spec.md#ref-rule\n" +
-		"[^1]: Balances are shown.\n[Option]: describes x\n\\[not a link](no.md) [ok \\[x\\]](yes.md)\n"
-	want := []string{"../a/spec.md#rule-a", "b.md", "pic.png", "c d.md#h", "d.md", "e.md", "https://example.com", "#own", "f.md", "../r/spec.md#ref-rule", "yes.md"}
+		"[^1]: Balances are shown.\n[Option]: describes x\n\\[not a link](no.md) [ok \\[x\\]](yes.md)\n" +
+		"[a](adj-a.md)[b](adj-b.md) [the [Single use] rule](nested.md) [![img](in.png)](out.md) \\\\[e](after-backslash.md)\n"
+	want := []string{"../a/spec.md#rule-a", "b.md", "pic.png", "c d.md#h", "d.md", "e.md", "https://example.com", "#own", "f.md", "../r/spec.md#ref-rule", "yes.md", "adj-a.md", "adj-b.md", "nested.md", "in.png", "out.md", "after-backslash.md"}
 	if got := Links(text); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Links = %q, want %q", got, want)
 	}
 }
 
 func TestAnchorsOfEveryHeadingForm(t *testing.T) {
-	text := "# Title\n\n## Foo ##\n\n  ### Indented\n\n#### Deep\n\nSetext heading\n--------------\n\n---\n\n```\n## fenced\n```\n## Foo\n### Foo\n"
-	want := []string{"title", "foo", "indented", "deep", "setext-heading", "foo-1", "foo-2"}
+	text := "# Title\n\n## Foo ##\n\n  ### Indented\n\n#### Deep\n\nSetext heading\n--------------\n\n---\n\n```\n## fenced\n```\n## Foo\n### Foo\n#### Notes\n#### Notes 1\n#### Notes\n"
+	want := []string{"title", "foo", "indented", "deep", "setext-heading", "foo-1", "foo-2", "notes", "notes-1", "notes-2"}
 	if got := Anchors(text); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Anchors = %q, want %q", got, want)
 	}

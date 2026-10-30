@@ -29,7 +29,7 @@ var (
 	headingRe = regexp.MustCompile(`^(#{1,3})\s+(.+?)\s*$`)
 	atxRe     = regexp.MustCompile(`^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$`)
 	setextRe  = regexp.MustCompile(`^ {0,3}(?:=+|-+)[ \t]*$`)
-	inlineRe  = regexp.MustCompile(`(?:^|[^\\])\[((?:\\.|[^\]\\])*)\]\(\s*(<[^>]*>|[^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)`)
+	targetRe  = regexp.MustCompile(`^\(\s*(<[^>]*>|[^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)`)
 	refDefRe  = regexp.MustCompile(`^ {0,3}\[([^\]^][^\]]*)\]:[ \t]*(<[^>]*>|[^\s<]+)[ \t]*(?:"[^"]*"|'[^']*'|\([^)]*\))?[ \t]*$`)
 )
 
@@ -116,11 +116,47 @@ func Links(text string) []string {
 			out = append(out, unbracket(m[2]))
 			continue
 		}
-		for _, m := range inlineRe.FindAllStringSubmatch(line, -1) {
-			out = append(out, unbracket(m[2]))
+		for i := strings.Index(line, "]("); i >= 0; {
+			if !escaped(line, i) && opening(line, i) >= 0 {
+				if m := targetRe.FindStringSubmatch(line[i+1:]); m != nil {
+					out = append(out, unbracket(m[1]))
+				}
+			}
+			next := strings.Index(line[i+1:], "](")
+			if next < 0 {
+				break
+			}
+			i += 1 + next
 		}
 	}
 	return out
+}
+
+// escaped reports whether the byte at i follows an odd number of backslashes.
+func escaped(line string, i int) bool {
+	n := 0
+	for j := i - 1; j >= 0 && line[j] == '\\'; j-- {
+		n++
+	}
+	return n%2 == 1
+}
+
+// opening returns the index of the unescaped `[` that the `]` at i closes,
+// brackets balanced as link text allows, or -1.
+func opening(line string, i int) int {
+	depth := 0
+	for j := i - 1; j >= 0; j-- {
+		switch {
+		case escaped(line, j):
+		case line[j] == ']':
+			depth++
+		case line[j] == '[' && depth == 0:
+			return j
+		case line[j] == '[':
+			depth--
+		}
+	}
+	return -1
 }
 
 // stripCode removes the code spans of a line: a run of backticks up to the
@@ -165,18 +201,17 @@ func stripCode(line string) string {
 
 // Anchors returns the slugs of every heading outside code fences — ATX of any
 // level, indented up to three spaces, closing hashes dropped, and setext — in
-// order; a slug already taken gets `-1`, `-2`, … as the host numbers it.
+// order; a slug already taken gets the first free `-1`, `-2`, … as the host
+// numbers it.
 func Anchors(text string) []string {
 	var out []string
-	seen := map[string]int{}
+	seen := map[string]bool{}
 	add := func(title string) {
 		s := Slug(title)
-		if n := seen[s]; n > 0 {
-			seen[s] = n + 1
-			s = fmt.Sprintf("%s-%d", s, n)
-		} else {
-			seen[s] = 1
+		for n := 1; seen[s]; n++ {
+			s = fmt.Sprintf("%s-%d", Slug(title), n)
 		}
+		seen[s] = true
 		out = append(out, s)
 	}
 	prev := ""

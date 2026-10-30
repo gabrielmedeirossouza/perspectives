@@ -353,8 +353,8 @@ func (g *Graph) brokenLinks(n *Node, paths map[string]bool, anchors map[string]m
 	return out
 }
 
-// repoPaths lists every file of the repository git tracks or would track, and
-// every directory holding one, the root as ".".
+// repoPaths lists every file of the repository git tracks or would track and
+// that is on disk, and every directory holding one, the root as ".".
 func repoPaths(root string) (map[string]bool, error) {
 	cmd := exec.Command("git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
 	var out, errb bytes.Buffer
@@ -364,7 +364,13 @@ func repoPaths(root string) (map[string]bool, error) {
 	}
 	paths := map[string]bool{".": true}
 	for _, f := range strings.Split(out.String(), "\x00") {
-		for ; f != "" && f != "." && !paths[f]; f = path.Dir(f) {
+		if f == "" {
+			continue
+		}
+		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(f))); err != nil {
+			continue // deleted from the working tree, not yet from the index
+		}
+		for ; f != "." && !paths[f]; f = path.Dir(f) {
 			paths[f] = true
 		}
 	}
@@ -831,6 +837,19 @@ func malformed(n *Node) string {
 	return ""
 }
 
+// blockedSource names the first valid source of n with blocking drift, which
+// refuses the sync of n, or "".
+func (g *Graph) blockedSource(n *Node) string {
+	for _, e := range n.Sources {
+		if e.Valid() {
+			if b := g.blocking(e.To); len(b) > 0 {
+				return fmt.Sprintf("`%s` has drift: %s", e.To.Rel, b[0])
+			}
+		}
+	}
+	return ""
+}
+
 // blocking lists the drift of n that makes its content or metadata not what
 // it claims.
 func (g *Graph) blocking(n *Node) []string {
@@ -877,12 +896,16 @@ func (g *Graph) Design() []string {
 				out = append(out, fmt.Sprintf("`%s` has no technical spec", n.Rel))
 			}
 		case Technical:
+			blocked := g.blockedSource(n)
 			for _, e := range n.Sources {
 				switch {
 				case e.Dangling():
 					line := fmt.Sprintf("`%s` has a dangling source `%s`%s", n.Rel, e.Source.Path, g.hint(e.Source.Path))
 					if titles := e.recorded(); len(titles) > 0 {
 						line += ": removed " + quoted(titles)
+					}
+					if blocked != "" {
+						line += " — waits: " + blocked
 					}
 					out = append(out, line)
 				case e.Stale():
@@ -892,8 +915,8 @@ func (g *Graph) Design() []string {
 							line += fmt.Sprintf("; %q parked: %s (/sdd-spec)", gap.Title, gap.Reason)
 						}
 					}
-					if b := g.blocking(e.To); len(b) > 0 {
-						line += fmt.Sprintf(" — waits: `%s` has drift: %s", e.To.Rel, b[0])
+					if blocked != "" {
+						line += " — waits: " + blocked
 					}
 					out = append(out, line)
 				}
@@ -1142,9 +1165,9 @@ func (g *Graph) codeWait(c *Node) string {
 }
 
 // wait names what is owed before code against t can run: t or a technical
-// spec upstream of it is stale or has a dangling source (/sdd-design), or has
-// drift that makes its content or metadata not what it claims, which refuses
-// every sync against it, or a source of it has.
+// spec upstream of it is stale or has a dangling source (/sdd-design) — or,
+// when a source of that spec has blocking drift, which refuses its sync, that
+// drift — or has blocking drift itself, which refuses every sync against it.
 func (g *Graph) wait(t *Node, seen map[*Node]bool) string {
 	if seen == nil {
 		seen = map[*Node]bool{}
@@ -1154,22 +1177,22 @@ func (g *Graph) wait(t *Node, seen map[*Node]bool) string {
 	}
 	seen[t] = true
 	for _, e := range t.Sources {
-		if e.Dangling() {
-			return fmt.Sprintf("`%s` has a dangling source `%s`%s (/sdd-design)", t.Rel, e.Source.Path, g.hint(e.Source.Path))
+		var reason string
+		switch {
+		case e.Dangling():
+			reason = fmt.Sprintf("`%s` has a dangling source `%s`%s (/sdd-design)", t.Rel, e.Source.Path, g.hint(e.Source.Path))
+		case e.Stale():
+			reason = fmt.Sprintf("`%s` is stale against `%s` (/sdd-design)", t.Rel, e.To.Rel)
+		default:
+			continue
 		}
-		if e.Stale() {
-			return fmt.Sprintf("`%s` is stale against `%s` (/sdd-design)", t.Rel, e.To.Rel)
+		if blocked := g.blockedSource(t); blocked != "" {
+			return blocked // /sdd-design cannot sync t until it is fixed
 		}
+		return reason
 	}
 	if b := g.blocking(t); len(b) > 0 {
 		return fmt.Sprintf("`%s` has drift: %s", t.Rel, b[0])
-	}
-	for _, e := range t.Sources {
-		if e.Valid() {
-			if b := g.blocking(e.To); len(b) > 0 {
-				return fmt.Sprintf("`%s` has drift: %s", e.To.Rel, b[0])
-			}
-		}
 	}
 	for _, e := range t.Sources {
 		if e.Valid() && e.To.Kind == Technical {
