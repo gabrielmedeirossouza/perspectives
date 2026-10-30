@@ -149,8 +149,8 @@ type Graph struct {
 	topo      []*Node         // technical nodes with metadata, sources first
 	pos       map[*Node]int
 	cycle     []string
-	strays    []string // metadata files that are no node, with the fix
-	uncovered []string // files in no node, with the fix
+	strays    []loose // metadata files that are no node, with the fix
+	uncovered []loose // files in no node, with the fix
 	gaps      []Gap
 	gapDrift  []string
 }
@@ -201,17 +201,17 @@ func Load(root string) (*Graph, error) {
 			if k, ok := g.kindOf(dir); ok && k == Code {
 				node(dir, true).HasMeta = true
 			} else {
-				g.strays = append(g.strays, fmt.Sprintf("`%s` is no node: the node of a spec is %s.%s", f, meta.SpecFile, strings.TrimPrefix(meta.Suffix, ".")))
+				g.strays = append(g.strays, loose{f, fmt.Sprintf("`%s` is no node: the node of a spec is %s.%s", f, meta.SpecFile, strings.TrimPrefix(meta.Suffix, "."))})
 			}
 		case strings.HasSuffix(base, meta.Suffix):
 			rel := strings.TrimSuffix(f, meta.Suffix)
 			switch {
 			case strings.HasSuffix(rel, meta.Suffix):
-				g.strays = append(g.strays, fmt.Sprintf("`%s` is no node: a metadata file has no metadata; delete it", f))
+				g.strays = append(g.strays, loose{f, fmt.Sprintf("`%s` is no node: a metadata file has no metadata; delete it", f)})
 			case g.isChrome(rel):
-				g.strays = append(g.strays, fmt.Sprintf("`%s` is no node: `%s` is chrome; delete it", f, rel))
+				g.strays = append(g.strays, loose{f, fmt.Sprintf("`%s` is no node: `%s` is chrome; delete it", f, rel)})
 			case dirs[rel]:
-				g.strays = append(g.strays, fmt.Sprintf("`%s` is no node: `%s` is a directory, whose metadata is `%s/%s`; delete it", f, rel, rel, meta.FileName))
+				g.strays = append(g.strays, loose{f, fmt.Sprintf("`%s` is no node: `%s` is a directory, whose metadata is `%s/%s`; delete it", f, rel, rel, meta.FileName)})
 			default:
 				if n := node(rel, false); n != nil {
 					n.HasMeta = true
@@ -245,7 +245,7 @@ func Load(root string) (*Graph, error) {
 		if d := g.byRel[path.Dir(f)]; d != nil && d.IsDir && d.links(base) {
 			continue // content of the directory node, taken from files
 		}
-		g.uncovered = append(g.uncovered, g.uncoveredFix(f))
+		g.uncovered = append(g.uncovered, loose{f, g.uncoveredFix(f)})
 	}
 	for _, n := range g.Nodes {
 		if n.Hash, err = meta.HashFiles(n.Dir, n.content); err != nil {
@@ -505,6 +505,29 @@ func (g *Graph) order() {
 // Node returns the node at a root-relative path, or nil.
 func (g *Graph) Node(rel string) *Node { return g.byRel[rel] }
 
+// loose is a file under the roots that belongs to no node, with its fix.
+type loose struct{ file, msg string }
+
+// Loose lists the metadata files that are no node, then the files in no
+// node, each with its fix: every one when under is empty, else those at or
+// under one of the root-relative paths of under.
+func (g *Graph) Loose(under []string) []string {
+	var out []string
+	for _, l := range append(append([]loose(nil), g.strays...), g.uncovered...) {
+		if len(under) == 0 {
+			out = append(out, l.msg)
+			continue
+		}
+		for _, u := range under {
+			if l.file == u || strings.HasPrefix(l.file, u+"/") {
+				out = append(out, l.msg)
+				break
+			}
+		}
+	}
+	return out
+}
+
 // NodesUnder lists the nodes at or under a root-relative path, by path: the
 // directory node of that directory, when it has one, and every node below.
 func (g *Graph) NodesUnder(rel string) []*Node {
@@ -719,8 +742,7 @@ func (g *Graph) Drift() []string {
 	for _, n := range g.Nodes {
 		d = append(d, g.NodeDrift(n)...)
 	}
-	d = append(d, g.strays...)
-	d = append(d, g.uncovered...)
+	d = append(d, g.Loose(nil)...)
 	if len(g.cycle) > 0 {
 		d = append(d, "technical specs source each other in a cycle: `"+strings.Join(g.cycle, "`, `")+"`")
 	}

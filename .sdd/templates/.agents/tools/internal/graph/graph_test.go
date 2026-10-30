@@ -327,6 +327,15 @@ func TestInvalidEdgesStraysOrphansAndUncovered(t *testing.T) {
 			t.Errorf("drift lacks %q:\n%s", want, strings.Join(d, "\n"))
 		}
 	}
+	if all := g.Loose(nil); len(all) != 8 || !has(all, "`src/loose/y.ts` is in no node") || !has(all, "`specs/business/c/.metadata.json` is no node") {
+		t.Errorf("Loose(nil) = %v", all)
+	}
+	if scoped := g.Loose([]string{"src/loose", "src/code"}); len(scoped) != 2 || !has(scoped, "`src/loose/y.ts`") || !has(scoped, "`src/code/z.ts.metadata.json.metadata.json`") {
+		t.Errorf("Loose(src/loose, src/code) = %v", scoped)
+	}
+	if none := g.Loose([]string{"src/lo"}); len(none) != 0 {
+		t.Errorf("Loose(src/lo) matched a sibling by prefix: %v", none)
+	}
 	if has(d, "README") || has(d, "`src/AGENTS.md` is in no node") || has(d, "`specs/spec.md` is in no node") {
 		t.Errorf("chrome reported: %v", d)
 	}
