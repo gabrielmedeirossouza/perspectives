@@ -84,7 +84,7 @@ func (g *Graph) CodeNodesUnder(rel string) []*Node {
 // global spec, which every code node it constrains lists.
 type Candidate struct {
 	Node    *Node
-	Names   bool   // its spec.md names the node's directory or a parent of it below src/
+	Names   bool   // its spec.md names the node's directory or a parent of it below the code root
 	Global  bool   // it serves no perspective node
 	Purpose string // the purpose sentence of its spec.md
 }
@@ -127,7 +127,7 @@ func (g *Graph) Dossier(n *Node) Dossier {
 			d.Perspectives = append(d.Perspectives, e.To)
 		}
 	}
-	names := namesRe(n.Rel)
+	names := namesRe(n.Rel, g.Paths.Src)
 	for _, t := range g.Nodes {
 		if t.Kind != Technical || listed[t] || !t.HasSpec {
 			continue
@@ -164,20 +164,21 @@ func (g *Graph) global(t *Node) bool {
 }
 
 // namesRe matches a mention of the node's directory, or of a parent of it
-// below src/, as a whole path token — optionally led by ./ and closed by a
-// slash or a sentence period; a sibling (src/backend/invitee), a file beside
-// it (src/backend/invite.ts), or a child path does not count. For src/ itself
-// the token is src, which most placement rules mention.
-func namesRe(rel string) *regexp.Regexp {
+// below the code root src, as a whole path token — optionally led by ./ and
+// closed by a slash or a sentence period; a sibling (src/backend/invitee), a
+// file beside it (src/backend/invite.ts), or a child path does not count. For
+// the code root itself the token is the root, which most placement rules
+// mention.
+func namesRe(rel, src string) *regexp.Regexp {
 	var dirs []string
 	for dir := rel; dir != "." && dir != ""; dir = path.Dir(dir) {
 		dirs = append(dirs, regexp.QuoteMeta(dir))
-		if dir == "src" {
+		if dir == src {
 			break
 		}
 	}
-	if rel != "src" {
-		dirs = dirs[:len(dirs)-1] // src alone names every code node
+	if rel != src {
+		dirs = dirs[:len(dirs)-1] // the code root alone names every code node
 	}
 	return regexp.MustCompile(`(^|[^\w/.-])(?:\./)?(` + strings.Join(dirs, "|") + `)/?(?:[^\w/.-]|\.(?:[^\w]|$)|$)`)
 }

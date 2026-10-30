@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"tools/internal/config"
 )
 
 // Root returns the repository root: flagRoot when given, otherwise the
-// nearest directory at or above the working directory that holds AGENTS.md
-// and perspectives/. go run -C .agents/tools starts two levels below it.
+// nearest directory at or above the working directory that holds
+// .sdd/.sdd-config.json. go run -C .agents/tools starts two levels below it.
 func Root(flagRoot string) (string, error) {
 	if flagRoot != "" {
 		abs, err := filepath.Abs(flagRoot)
@@ -18,7 +20,7 @@ func Root(flagRoot string) (string, error) {
 			return "", err
 		}
 		if !isRoot(abs) {
-			return "", errors.New("no AGENTS.md and perspectives/ under " + abs)
+			return "", errors.New("no " + config.File + " under " + abs)
 		}
 		return abs, nil
 	}
@@ -31,17 +33,14 @@ func Root(flagRoot string) (string, error) {
 			return dir, nil
 		}
 		if filepath.Dir(dir) == dir {
-			return "", errors.New("no repository root (AGENTS.md + perspectives/) at or above " + cwd)
+			return "", errors.New("no repository root (" + config.File + ") at or above " + cwd)
 		}
 	}
 }
 
 func isRoot(dir string) bool {
-	if st, err := os.Stat(filepath.Join(dir, "AGENTS.md")); err != nil || st.IsDir() {
-		return false
-	}
-	st, err := os.Stat(filepath.Join(dir, "perspectives"))
-	return err == nil && st.IsDir()
+	st, err := os.Stat(filepath.Join(dir, filepath.FromSlash(config.File)))
+	return err == nil && st.Mode().IsRegular()
 }
 
 // Rel returns path relative to root, with forward slashes.

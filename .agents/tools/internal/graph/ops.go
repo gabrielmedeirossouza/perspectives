@@ -75,7 +75,7 @@ func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 	}
 	if n.Kind == Code {
 		var problems []string
-		if msg := noTechnical(n); msg != "" {
+		if msg := g.noTechnical(n); msg != "" {
 			problems = append(problems, msg) // which perspectives are served is unknown without a technical spec
 		} else {
 			served, _ := g.served(n)

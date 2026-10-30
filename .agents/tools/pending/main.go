@@ -10,7 +10,7 @@
 //	              of the code nodes at or under each dir — and the drift
 //	--all         with --audit, also the nodes already approved or parked
 //	--root <dir>  repository root, absolute (default: nearest directory at or
-//	              above the working directory with AGENTS.md and perspectives/)
+//	              above the working directory with .sdd/.sdd-config.json)
 //
 // Output, plain text:
 //
@@ -33,7 +33,7 @@
 //	              the rest), and the perspective corrections that follow
 //	# Drift       metadata that does not match its content, missing or orphan
 //	              metadata, invalid sources, a code node with no technical
-//	              spec, files under src/ outside any node, duplicate titles,
+//	              spec, files under the code root outside any node, duplicate titles,
 //	              cycles, gaps in TODO.md that match no rule or node
 //
 // With nothing pending it prints "No pending work." and the drift. Exit 0
@@ -107,7 +107,7 @@ func main() {
 // when none is given.
 func codeNodes(g *graph.Graph, dirs []string) ([]*graph.Node, error) {
 	if len(dirs) == 0 {
-		return g.CodeNodesUnder("src"), nil
+		return g.CodeNodesUnder(g.Paths.Src), nil
 	}
 	seen := map[*graph.Node]bool{}
 	var out []*graph.Node

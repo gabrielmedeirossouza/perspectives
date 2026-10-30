@@ -27,6 +27,7 @@ func gitInit(t *testing.T) string {
 		t.Fatalf("git init: %v %s", err, out)
 	}
 	write(t, root, "AGENTS.md", "# Root\n")
+	write(t, root, ".sdd/.sdd-config.json", `{"version": 0, "paths": {"specs": "perspectives", "src": "src", "technical": "src/specs"}}`+"\n")
 	write(t, root, "perspectives/AGENTS.md", "# P\n")
 	return root
 }

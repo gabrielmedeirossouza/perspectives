@@ -7,10 +7,11 @@ import (
 	"regexp"
 	"strings"
 
+	"tools/internal/config"
 	"tools/internal/md"
 )
 
-// Gap is one item parked in perspectives/TODO.md under ## Spec gap (a product
+// Gap is one item parked in TODO.md of the specs root under ## Spec gap (a product
 // rule /design cannot design against), ## Design gap (a rule /implement
 // cannot implement), or ## Audit gap (a code node no technical spec governs).
 // Shape: `- **<title>** (`<owner>`) <reason>`, with an optional leading `[ ]`
@@ -26,9 +27,11 @@ type Gap struct {
 
 var gapRe = regexp.MustCompile("^\\s*-\\s*(?:\\[[ xX]\\]\\s*)?\\*\\*(.+?)\\*\\*\\s*\\(`([^`]+)`\\)\\s*(.*)$")
 
-// loadGaps reads perspectives/TODO.md; items out of shape become drift.
-func loadGaps(root string) ([]Gap, []string) {
-	text, err := os.ReadFile(filepath.Join(root, "perspectives", "TODO.md"))
+// loadGaps reads TODO.md of the specs root; items out of shape become drift.
+// An owner under no root names a perspective node.
+func loadGaps(root string, p config.Paths) ([]Gap, []string) {
+	todo := p.Specs + "/TODO.md"
+	text, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(todo)))
 	if err != nil {
 		return nil, nil
 	}
@@ -53,12 +56,12 @@ func loadGaps(root string) ([]Gap, []string) {
 			}
 			m := gapRe.FindStringSubmatch(line)
 			if m == nil {
-				drift = append(drift, "perspectives/TODO.md: "+heading+" gap out of shape: "+strings.TrimSpace(line))
+				drift = append(drift, todo+": "+heading+" gap out of shape: "+strings.TrimSpace(line))
 				continue
 			}
 			owner := cleanRel(m[2])
-			if owner != "src" && !strings.HasPrefix(owner, "src/") && !strings.HasPrefix(owner, "perspectives/") {
-				owner = "perspectives/" + owner
+			if !config.Under(owner, p.Src) && !config.Under(owner, p.Technical) && !config.Under(owner, p.Specs) {
+				owner = p.Specs + "/" + owner
 			}
 			reason := strings.TrimRight(strings.TrimSpace(m[3]), ".")
 			if reason == "" {
@@ -106,22 +109,23 @@ func (g *Graph) park(u Unit) Unit {
 // gap naming no code node that owes an audit.
 func (g *Graph) unmatchedGaps() []string {
 	g.Units() // marks design gaps
+	todo := g.Paths.Specs + "/TODO.md"
 	var d []string
 	for _, gap := range g.gaps {
 		switch gap.Heading {
 		case "design":
 			if !gap.matched {
-				d = append(d, fmt.Sprintf("perspectives/TODO.md: design gap %q (`%s`) matches no pending rule", gap.Title, gap.Node))
+				d = append(d, fmt.Sprintf(todo+": design gap %q (`%s`) matches no pending rule", gap.Title, gap.Node))
 			}
 		case "spec":
 			n := g.byRel[gap.Node]
 			if n == nil || n.Rules[gap.Title] == "" {
-				d = append(d, fmt.Sprintf("perspectives/TODO.md: spec gap %q (`%s`) matches no rule", gap.Title, gap.Node))
+				d = append(d, fmt.Sprintf(todo+": spec gap %q (`%s`) matches no rule", gap.Title, gap.Node))
 			}
 		case "audit":
 			n := g.byRel[gap.Node]
 			if n == nil || n.Kind != Code || auditedOf(n) > 0 {
-				d = append(d, fmt.Sprintf("perspectives/TODO.md: audit gap %q (`%s`) names no code node that owes an audit", gap.Title, gap.Node))
+				d = append(d, fmt.Sprintf(todo+": audit gap %q (`%s`) names no code node that owes an audit", gap.Title, gap.Node))
 			}
 		}
 	}

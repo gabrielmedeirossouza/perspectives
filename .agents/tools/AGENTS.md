@@ -6,7 +6,7 @@ Procedures agents turned into code: the law of this folder and the catalog of wh
 
 - Go, standard library only: one module at `.agents/tools/go.mod`, no dependency, no `go.sum` entry, no committed binary. Go 1.22 or newer.
 - One directory per tool: `.agents/tools/<name>/main.go`, `<name>` in lower kebab-case. Code two tools share lives in `.agents/tools/internal/`.
-- Run from the repository root as `go run -C .agents/tools ./<name> [flags]` (`-C` resolves against the working directory). A tool resolves the repository root by walking up from its working directory to the directory that holds `AGENTS.md` and `perspectives/`; `--root <dir>`, absolute, overrides it. Paths it takes and prints are relative to that root.
+- Run from the repository root as `go run -C .agents/tools ./<name> [flags]` (`-C` resolves against the working directory). A tool resolves the repository root by walking up from its working directory to the directory that holds `.sdd/.sdd-config.json`; `--root <dir>`, absolute, overrides it. Paths it takes and prints are relative to that root. Where the product specs, the technical specs, and the code live is the `paths` of that file (**Working files** in the root `AGENTS.md`); a tool never hardcodes those roots.
 - Read-only, with one exception: `metadata` writes `.metadata.json` and nothing else. No other tool writes; the skill that owns a write performs it.
 - `main.go` opens with a comment: the question the tool answers, its flags, and its output.
 - Output is plain text an agent reads as is. Exit 0 with the answer; non-zero with the reason on stderr when it cannot answer (`go run` reports every failure as 1).

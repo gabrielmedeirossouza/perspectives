@@ -28,6 +28,7 @@ func gitInit(t *testing.T) string {
 		t.Fatalf("git init: %v %s", err, out)
 	}
 	write(t, root, "AGENTS.md", "# Root\n")
+	write(t, root, ".sdd/.sdd-config.json", `{"version": 0, "paths": {"specs": "perspectives", "src": "src", "technical": "src/specs"}}`+"\n")
 	write(t, root, "perspectives/AGENTS.md", "# Perspectives\n")
 	write(t, root, "src/AGENTS.md", "# Source\n")
 	return root
@@ -679,7 +680,7 @@ func TestDossierTiersCandidatesAndNamesCorrections(t *testing.T) {
 }
 
 func TestNamesReMatchesWholePathTokens(t *testing.T) {
-	re := namesRe("src/backend/invite")
+	re := namesRe("src/backend/invite", "src")
 	for text, want := range map[string]bool{
 		"Code under `src/backend/invite/` lives here.": true,
 		"Everything under src/backend.":                true,
@@ -693,7 +694,7 @@ func TestNamesReMatchesWholePathTokens(t *testing.T) {
 			t.Errorf("%q: names = %v, want %v", text, got, want)
 		}
 	}
-	if !namesRe("src").MatchString("Manifests live in `src/`.") {
+	if !namesRe("src", "src").MatchString("Manifests live in `src/`.") {
 		t.Error("src node: src/ not matched")
 	}
 }
@@ -775,7 +776,7 @@ func TestAuditedPlacementIsDrift(t *testing.T) {
 }
 
 func TestNamesReRejectsFilesBesideTheDirectory(t *testing.T) {
-	re := namesRe("src/backend/invite")
+	re := namesRe("src/backend/invite", "src")
 	for text, want := range map[string]bool{
 		"The entry is src/backend/invite.ts.":        false,
 		"See src/backend.md for the layout.":         false,

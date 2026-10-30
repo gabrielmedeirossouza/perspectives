@@ -1,6 +1,7 @@
-// Package graph loads every node under perspectives/ and src/, computes the
-// current hash and rules of each, resolves the sources they list, reads the
-// gaps parked in perspectives/TODO.md, and derives the states of **Metadata**
+// Package graph loads every node under the specs root and the code root of
+// .sdd/.sdd-config.json, computes the current hash and rules of each, resolves
+// the sources they list, reads the gaps parked in TODO.md of the specs root,
+// and derives the states of **Metadata**
 // in the root AGENTS.md: drift, stale, dangling, unconsumed, fresh, waits — and
 // the audit standing of each code node (audit.go).
 package graph
@@ -15,6 +16,7 @@ import (
 	"sort"
 	"strings"
 
+	"tools/internal/config"
 	"tools/internal/meta"
 )
 
@@ -22,9 +24,9 @@ import (
 type Kind int
 
 const (
-	Perspective Kind = iota // under perspectives/: a product spec
-	Technical               // under src/specs/: a technical spec
-	Code                    // elsewhere under src/: code
+	Perspective Kind = iota // under the specs root: a product spec
+	Technical               // under the technical root: a technical spec
+	Code                    // elsewhere under the code root: code
 )
 
 func (k Kind) String() string {
@@ -56,7 +58,7 @@ func allowed(k Kind) string {
 	return "a code node sources technical nodes and the perspective nodes they serve"
 }
 
-// Node is a directory with .metadata.json, or a perspectives directory with spec.md.
+// Node is a directory with .metadata.json, or a directory under the specs root with spec.md.
 type Node struct {
 	Rel     string // root-relative directory, forward slashes
 	Dir     string // absolute directory
@@ -110,7 +112,8 @@ func (e *Edge) recorded() []string {
 // Graph is every node of the repository with its edges.
 type Graph struct {
 	Root      string
-	Nodes     []*Node // sorted by Rel
+	Paths     config.Paths // where product specs, technical specs, and code live
+	Nodes     []*Node      // sorted by Rel
 	byRel     map[string]*Node
 	topo      []*Node // technical nodes, sources first
 	pos       map[*Node]int
@@ -120,20 +123,24 @@ type Graph struct {
 	gapDrift  []string
 }
 
-// Load lists the files git tracks or would track under perspectives/ and
-// src/, finds the nodes among them, computes every hash and edge, and reads
-// the gaps parked in perspectives/TODO.md.
+// Load reads the layout of .sdd/.sdd-config.json, lists the files git tracks
+// or would track under its roots, finds the nodes among them, computes every
+// hash and edge, and reads the gaps parked in TODO.md of the specs root.
 func Load(root string) (*Graph, error) {
-	files, err := listFiles(root)
+	cfg, err := config.Load(root)
 	if err != nil {
 		return nil, err
 	}
-	g := &Graph{Root: root, byRel: map[string]*Node{}, pos: map[*Node]int{}, uncovered: map[string]int{}}
+	files, err := listFiles(root, cfg.Paths)
+	if err != nil {
+		return nil, err
+	}
+	g := &Graph{Root: root, Paths: cfg.Paths, byRel: map[string]*Node{}, pos: map[*Node]int{}, uncovered: map[string]int{}}
 	node := func(rel string) *Node {
 		if n := g.byRel[rel]; n != nil {
 			return n
 		}
-		k, ok := kindOf(rel)
+		k, ok := g.kindOf(rel)
 		if !ok {
 			return nil
 		}
@@ -148,7 +155,7 @@ func Load(root string) (*Graph, error) {
 			if n := node(dir); n != nil {
 				n.HasMeta = true
 			}
-		} else if base == meta.SpecFile && strings.HasPrefix(f, "perspectives/") {
+		} else if base == meta.SpecFile && config.Under(dir, g.Paths.Specs) {
 			if n := node(dir); n != nil {
 				n.HasSpec = true
 			}
@@ -163,12 +170,12 @@ func Load(root string) (*Graph, error) {
 	}
 	sort.Slice(g.Nodes, func(i, j int) bool { return g.Nodes[i].Rel < g.Nodes[j].Rel })
 	for _, f := range files {
-		if isChrome(f) {
+		if g.isChrome(f) {
 			continue
 		}
 		n := g.Owner(f)
 		if n == nil {
-			if strings.HasPrefix(f, "src/") {
+			if config.Under(f, g.Paths.Src) {
 				g.uncovered[path.Dir(f)]++
 			}
 			continue
@@ -206,20 +213,25 @@ func Load(root string) (*Graph, error) {
 		}
 	}
 	g.order()
-	g.gaps, g.gapDrift = loadGaps(root)
+	g.gaps, g.gapDrift = loadGaps(root, g.Paths)
 	return g, nil
 }
 
-// isChrome reports whether a file directly under src/ ending in .md is
-// repository chrome: no node's content, never drift.
-func isChrome(f string) bool {
-	return path.Dir(f) == "src" && strings.HasSuffix(f, ".md")
+// isChrome reports whether a file directly under the code root ending in .md
+// is repository chrome: no node's content, never drift.
+func (g *Graph) isChrome(f string) bool {
+	return path.Dir(f) == g.Paths.Src && strings.HasSuffix(f, ".md")
 }
 
 // listFiles returns the root-relative regular files git tracks or would track
-// (not ignored) under perspectives/ and src/, sorted.
-func listFiles(root string) ([]string, error) {
-	cmd := exec.Command("git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "perspectives", "src")
+// (not ignored) under the specs root, the code root, and the technical root
+// when it sits beside the code root, sorted.
+func listFiles(root string, p config.Paths) ([]string, error) {
+	args := []string{"-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", p.Specs, p.Src}
+	if !config.Under(p.Technical, p.Src) {
+		args = append(args, p.Technical)
+	}
+	cmd := exec.Command("git", args...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
@@ -266,13 +278,14 @@ func (g *Graph) Staged() ([]*Node, error) {
 	return nodes, nil
 }
 
-func kindOf(rel string) (Kind, bool) {
+// kindOf is the kind of a root-relative directory by its place in the layout.
+func (g *Graph) kindOf(rel string) (Kind, bool) {
 	switch {
-	case rel == "perspectives" || strings.HasPrefix(rel, "perspectives/"):
+	case config.Under(rel, g.Paths.Specs):
 		return Perspective, true
-	case rel == "src/specs" || strings.HasPrefix(rel, "src/specs/"):
+	case config.Under(rel, g.Paths.Technical):
 		return Technical, true
-	case rel == "src" || strings.HasPrefix(rel, "src/"):
+	case config.Under(rel, g.Paths.Src):
 		return Code, true
 	}
 	return 0, false
@@ -447,7 +460,7 @@ func (g *Graph) findings(n *Node) []finding {
 		}
 	}
 	if n.Kind == Code && n.Meta != nil {
-		if msg := noTechnical(n); msg != "" {
+		if msg := g.noTechnical(n); msg != "" {
 			warn(msg)
 		} else if !g.danglingTechnical(n) { // which perspectives are served is unknown until /implement drops it
 			served, _ := g.served(n)
@@ -466,7 +479,7 @@ func (g *Graph) findings(n *Node) []finding {
 // danglingTechnical reports whether a code node lists a technical path that is no node.
 func (g *Graph) danglingTechnical(n *Node) bool {
 	for _, e := range n.Sources {
-		if k, ok := kindOf(cleanRel(e.Source.Path)); ok && k == Technical && e.Dangling() {
+		if k, ok := g.kindOf(cleanRel(e.Source.Path)); ok && k == Technical && e.Dangling() {
 			return true
 		}
 	}
@@ -476,12 +489,12 @@ func (g *Graph) danglingTechnical(n *Node) bool {
 // noTechnical names a code node whose sources hold no technical path. It reads
 // the kind of each path, not the validity of its edge, so a node whose only
 // technical source is dangling is reported as dangling and not also here.
-func noTechnical(n *Node) string {
+func (g *Graph) noTechnical(n *Node) string {
 	if n.Kind != Code || n.Meta == nil {
 		return ""
 	}
 	for _, s := range n.Meta.Sources {
-		if k, ok := kindOf(cleanRel(s.Path)); ok && k == Technical {
+		if k, ok := g.kindOf(cleanRel(s.Path)); ok && k == Technical {
 			return ""
 		}
 	}
@@ -502,7 +515,7 @@ func specless(n *Node) string {
 // HasDrift reports whether NodeDrift finds anything.
 func (g *Graph) HasDrift(n *Node) bool { return len(g.NodeDrift(n)) > 0 }
 
-// Drift lists every node's drift, then files under src/ outside any node,
+// Drift lists every node's drift, then files under the code root outside any node,
 // technical specs that source each other in a cycle, and gaps in TODO.md
 // that match no rule or no code node owing an audit.
 func (g *Graph) Drift() []string {

@@ -9,8 +9,8 @@
 //	(no flag)     check: list every drift of the targeted nodes; fail if any
 //	--write       recompute hash and rules; move modified only when the hash
 //	              changed; on a code node, return audited to 0 when the hash
-//	              changed; create the file for a perspectives directory that
-//	              holds spec.md; never touch sources
+//	              changed; create the file for a directory of the specs root
+//	              that holds spec.md; never touch sources
 //	--sync        --write, then record the current hash and rules of every
 //	              source, returning audited to 0 when a source is recorded for
 //	              the first time; refuses a dangling or invalid source, one
@@ -27,7 +27,7 @@
 //	              this. It hashes the working tree, so a partially staged file
 //	              is hashed as it is on disk
 //	--root <dir>  repository root, absolute (default: nearest directory at or
-//	              above the working directory with AGENTS.md and perspectives/)
+//	              above the working directory with .sdd/.sdd-config.json)
 //
 // Output, plain text, one line per node: ok, written, synced, approved (with
 // the count), unchanged, or the drift found. Exit 0 when done; 1 when a check
@@ -77,7 +77,7 @@ func main() {
 	check(err)
 	targets = g.SourcesFirst(targets)
 	if len(targets) == 0 && !opts.staged {
-		fmt.Println("no node under perspectives/ or src/")
+		fmt.Printf("no node under %s/ or %s/\n", g.Paths.Specs, g.Paths.Src)
 		return
 	}
 
@@ -196,7 +196,7 @@ func resolve(g *graph.Graph, root string, dirs []string) ([]*graph.Node, error) 
 		rel = repo.Clean(rel)
 		n := g.Node(rel)
 		if n == nil {
-			return nil, fmt.Errorf("`%s` is no node: a perspectives directory holds %s; a src directory holds %s with its sources", rel, meta.SpecFile, meta.FileName)
+			return nil, fmt.Errorf("`%s` is no node: a directory under %s/ holds %s; a directory under %s/ holds %s with its sources", rel, g.Paths.Specs, meta.SpecFile, g.Paths.Src, meta.FileName)
 		}
 		if !seen[n] {
 			seen[n] = true
