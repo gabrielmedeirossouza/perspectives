@@ -6,7 +6,8 @@ description: >-
   decision per rule with the cost of the rejected alternative, and declares
   which perspective specs each technical spec serves so a product change
   reaches it. Use when a perspective spec has no technical spec, when pending
-  reports a technical spec stale or dangling, when adding, changing, or
+  reports a technical spec stale or dangling or names drift for /sdd-design,
+  when adding, changing, or
   removing a technical rule, or when the user types /sdd-design.
 ---
 
@@ -30,7 +31,7 @@ $ARGUMENTS
 
 Examples: `/sdd-design invite:HTTP contract and persistence`; `/sdd-design toolchain:test runner`; `/sdd-design review invite against the new expiry rule`; `/sdd-design remove http-client`.
 
-The argument is a **request**. The name is optional; locate the technical spec from the text. **No argument = run `go run -C .agents/tools ./pending`, present its `# Design` section — perspective specs with no technical spec, technical specs stale or dangling — and the `## Audit gap` items of `TODO.md` — code nodes no technical spec governs — and stop.** Ask which to take. Do not infer the target from a prior session or a git branch.
+The argument is a **request**. The name is optional; locate the technical spec from the text. **No argument = run `go run -C .agents/tools ./pending`, present its `# Design` section — perspective specs with no technical spec, technical specs stale or dangling — the `# Drift` lines that name `(/sdd-design)` — a markdown link of a technical spec that names nothing — and the `## Audit gap` items of `TODO.md` — code nodes no technical spec governs — and stop.** Ask which to take. Do not infer the target from a prior session or a git branch.
 
 ## Steps
 
@@ -43,7 +44,7 @@ The argument is a **request**. The name is optional; locate the technical spec f
 5. **Order** the items: dependencies first — a global technical spec before the ones that depend on it; the rule another cites before the citing one.
 6. **Interview** until shared understanding. One question at a time, in the order of step 5, with a recommendation: the option, why, and the cost of the rejected alternative. Walk every branch; if an answer opens a new one, follow it. An indirection needs its pain trigger named. Check drafts against P1–P7 and the technical **Vocabulary** before proposing a write.
 7. **Confirm:** "Shall I apply these changes?" Only then write.
-8. **Write** `src/specs/<name>/spec.md` to the skeleton. For a new node, write `src/specs/<name>/spec.md.metadata.json` as `{"version": 2, "sources": [{"path": "..."}]}`: the perspective specs it serves and the technical specs it depends on, each by its `spec.md`, paths relative to the repository root — `{"version": 2}` for a global spec, which lists none. Then `go run -C .agents/tools ./metadata --sync src/specs/<name>`. A stale spec that needs no change after review is only synced — but a source rule removed or renamed takes its citation along first: `pending` lists the link that names no heading as drift of this spec, and a code node cannot sync against a spec with drift. A dangling source is a perspective spec that is gone: remove the rules that served only it, drop its `sources[].path`, then sync — or delete the whole spec when nothing of it remains. Park a product hole under `## Spec gap` of `TODO.md`; delete the `## Design gap` and `## Audit gap` items this write closes. Removing a spec deletes its directory; the code nodes that listed it show as dangling in `pending`, for `/sdd-implement`.
+8. **Write** `src/specs/<name>/spec.md` to the skeleton. For a new node, write `src/specs/<name>/spec.md.metadata.json` as `{"version": 2, "sources": [{"path": "..."}]}`: the perspective specs it serves and the technical specs it depends on, each by its `spec.md`, paths relative to the repository root — `{"version": 2}` for a global spec, which lists none. Then `go run -C .agents/tools ./metadata --sync src/specs/<name>`. A stale spec that needs no change after review is only synced — but a source rule or file removed, renamed, or moved takes its markdown link along first, and a removed one also revisits the citing rule, which may serve nothing now: `pending` lists the link as drift of this spec, and the tool refuses to sync a spec whose own link names nothing. A broken link of a perspective source is `/sdd-spec`'s: it refuses no sync here; name it in the report. A dangling source is a perspective spec that is gone: remove the rules that served only it and the markdown links into it, drop its `sources[].path`, then sync — or delete the whole spec when nothing of it remains. Park a product hole under `## Spec gap` of `TODO.md`; delete the `## Design gap` and `## Audit gap` items this write closes. Removing a spec deletes its directory; the code nodes that listed it show as dangling in `pending`, for `/sdd-implement`.
 9. **Report** by technical spec: what was written, where, which product rules it serves, what was synced without change, what was parked, and the product items handed to `/sdd-spec`.
 
 ### Interview

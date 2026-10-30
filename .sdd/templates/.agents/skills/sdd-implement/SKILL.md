@@ -50,7 +50,7 @@ A hole or open spec, product or technical → park the rule under `## Design gap
 
 ## Continue
 
-`continue` implements the next batch of the backlog and stops. The backlog is what `pending` reports under `# Implement`: technical specs no code node realizes, and directories whose code nodes are stale against a source, hold a dangling one, or miss a perspective node their technical specs serve. The next `continue` resumes where this one stopped, until `pending` prints "No pending work."
+`continue` implements the next batch of the backlog and stops. The backlog is what `pending` reports under `# Implement`: technical specs no code node realizes, and directories whose code nodes are stale against a source, hold a dangling one, or miss a perspective node their technical specs serve. The next `continue` resumes where this one stopped, until `pending` lists no `# Implement` section.
 
 **Done when:** every unit of the batch is synced or parked as a design gap; the user has the report and the next batch.
 
