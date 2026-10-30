@@ -36,7 +36,7 @@ No argument = the `remote` of `.sdd/.sdd-config.json`. `--from` reads a local ch
 **Done when:** every file the plan names is applied or deliberately kept; no conflict marker is left; `.sdd/.sdd-config.json` records the new version; tests, `metadata`, and `pending` are green; the user has the report.
 
 1. **Stop** when `git status --porcelain` is not empty: an update is reviewed as one diff. Stop when `.sdd/.sdd-config.json` is missing, or has no `remote` and no `--from` was given.
-2. **Plan:** `go run -C .agents/tools ./update [--from <dir>]`. Same version on both sides → report and stop. Read every line: `add`, `update`, `merge` are applied as they are; `conflict` needs a decision; `missing` and `skip` are reported, never written; `by hand` names what this skill writes.
+2. **Plan:** `go run -C .agents/tools ./update [--from <dir>]`. Same version on both sides → report and stop. Read every line: `add`, `update`, `merge` are applied as they are — an `add` of a file the project removed by hand brings it back, because the config is the record of what the project keeps: drop the skill or the perspective in the config to keep it out; `conflict` needs a decision; `skip` is reported, never written; `by hand` names what this skill writes.
 3. **Confirm:** show the plan and ask "Shall I apply this update?" Only then continue.
 4. **Apply:** `go run -C .agents/tools ./update --apply [--from <dir>]`. The tool writes the files, leaves markers in the conflicts, and records the new version.
 5. **Resolve** each conflict in its file, asking when the choice is not obvious:
