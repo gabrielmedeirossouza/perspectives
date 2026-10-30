@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -69,10 +70,47 @@ func Parse(raw []byte) (Config, error) {
 	if err := dec.Decode(&c); err != nil {
 		return c, fmt.Errorf("%s: invalid JSON: %v", File, err)
 	}
-	if err := c.Paths.validate(); err != nil {
+	if err := c.validate(); err != nil {
 		return c, fmt.Errorf("%s: %v", File, err)
 	}
 	return c, nil
+}
+
+var nameRe = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+
+// validate checks the version, the layout, and the names of perspectives and
+// skills: lower kebab-case, unique, non-empty.
+func (c *Config) validate() error {
+	if c.Version < 0 {
+		return fmt.Errorf("version %d is negative", c.Version)
+	}
+	if err := c.Paths.validate(); err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	for _, p := range c.Perspectives {
+		if !nameRe.MatchString(p.Name) {
+			return fmt.Errorf("perspectives: name %q is not lower kebab-case", p.Name)
+		}
+		if p.From != "" && !nameRe.MatchString(p.From) {
+			return fmt.Errorf("perspectives: from %q of %s is not lower kebab-case", p.From, p.Name)
+		}
+		if seen[p.Name] {
+			return fmt.Errorf("perspectives: %s is listed twice", p.Name)
+		}
+		seen[p.Name] = true
+	}
+	seen = map[string]bool{}
+	for _, s := range c.Skills {
+		if !nameRe.MatchString(s) {
+			return fmt.Errorf("skills: %q is not lower kebab-case", s)
+		}
+		if seen[s] {
+			return fmt.Errorf("skills: %s is listed twice", s)
+		}
+		seen[s] = true
+	}
+	return nil
 }
 
 // validate cleans each path and checks the layout: three root-relative

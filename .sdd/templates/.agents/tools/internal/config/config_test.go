@@ -58,6 +58,13 @@ func TestLoadRefusesInvalidLayouts(t *testing.T) {
 		{`{"paths": {"technical": "specs/tech"}}`, "overlap"},
 		{`{"paths": {"technical": "src"}}`, "holds paths.src"},
 		{`{"paths": {"src": "design/code", "technical": "design"}}`, "holds paths.src"},
+		{`{"version": -1}`, "negative"},
+		{`{"perspectives": [{"name": ""}]}`, "not lower kebab-case"},
+		{`{"perspectives": [{"name": "../escape"}]}`, "not lower kebab-case"},
+		{`{"perspectives": [{"name": "player", "from": "User"}]}`, "not lower kebab-case"},
+		{`{"perspectives": [{"name": "player"}, {"name": "player"}]}`, "listed twice"},
+		{`{"skills": ["sdd-spec", "sdd-spec"]}`, "listed twice"},
+		{`{"skills": ["Sdd Spec"]}`, "not lower kebab-case"},
 	} {
 		root := t.TempDir()
 		write(t, root, tc.text)
