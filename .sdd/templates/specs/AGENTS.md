@@ -42,7 +42,9 @@ Create `spec.md` when its first rule exists.
 
 ## Perspectives
 
-`PERSPECTIVES.md` is the catalog of the perspectives of this product: one bullet per perspective — the name in bold, its directory in parentheses, what it holds and what it leaves out. Reach it to know which perspectives exist before scoping a rule. A perspective enters the catalog in the session its directory and `AGENTS.md` are created, and leaves it in the session they are removed. Not a spec file, no node.
+`PERSPECTIVES.md` is the catalog of the perspectives of this product: one bullet per perspective — the name in bold, its directory in parentheses, what it holds and what it leaves out. Reach it to know which perspectives exist before scoping a rule. It mirrors `perspectives` of `.sdd/.sdd-config.json`: the two move in the same session. Not a spec file, no node.
+
+`/sdd-spec` adds, renames, or removes a perspective, in one session: the entry in `perspectives` of `.sdd/.sdd-config.json` (`from` names the shipped kind it derives from — business, user, operator — and is absent for a kind of this product alone), the directory, its `AGENTS.md` written by analogy to the closest shipped kind (same headings: feature boundary, scope table, vocabulary table), and its bullet here. A rename moves the directory with its specs; a removal deletes them; the technical and code nodes that listed a spec under it show as dangling in `pending`, for `/sdd-design` and `/sdd-implement`. The law of an existing perspective's `AGENTS.md` is not edited by a spec write.
 
 ## Glossary
 
@@ -264,4 +266,4 @@ Violation is a grave failure. Volume, age, or “already reviewed” does not ex
 | Glossary | Does the spec use the canonical name? Does every new or shifted term have an entry? |
 | TODO | Did this session park what it cannot close? Did unblocked items leave the file? |
 
-Permissions in each perspective: create, edit, and delete `<feature>/spec.md` with its directory, and the perspective's `spec.md`. The law of the folder in `AGENTS.md` is not edited by a spec write. `.metadata.json` is written only through the tool. Edit `CONTEXT.md` (glossary only). Edit `TODO.md` (parked work only).
+Permissions in each perspective: create, edit, and delete `<feature>/spec.md` with its directory, and the perspective's `spec.md`. A perspective is created, renamed, or removed as **Perspectives** says; the law of an existing perspective's `AGENTS.md` is not edited by a spec write. `.metadata.json` is written only through the tool. Edit `CONTEXT.md` (glossary only). Edit `TODO.md` (parked work only).

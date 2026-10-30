@@ -6,7 +6,7 @@ Cursor, Claude Code (v2.1.277+), Codex, and Antigravity (1.20.5+) read this file
 
 An `AGENTS.md` holds the structure of its tree: what lives where, who writes what, and the law that does not change with the product. What grows or varies with the product — which perspectives exist, global rules, the glossary, parked work, bug autopsies, testing guidelines — lives in a sibling file named by its theme (`PERSPECTIVES.md`, `spec.md`, `CONTEXT.md`, `TODO.md`, `BUG-AUTOPSIES.md`, `INCREMENTAL-TESTING-GUIDELINES.md`), referenced once from the `AGENTS.md` beside it. An `AGENTS.md` never grows with the product.
 
-Skills live once, in `.agents/skills/<name>/SKILL.md`. Claude Code reads only `.claude/skills/`, so `.claude/skills/<name>` is a symlink to `../../.agents/skills/<name>`. A new skill gets both; edits go to `.agents/skills/`.
+Skills live once, in `.agents/skills/<name>/SKILL.md`. Claude Code reads only `.claude/skills/`, so `.claude/skills/<name>` is a symlink to `../../.agents/skills/<name>`. A new skill gets both; edits go to `.agents/skills/`. A skill this project does not want is removed with its symlink and dropped from `skills` of `.sdd/.sdd-config.json`; the law and the other skills keep naming it, as what the framework offers, and `/sdd-update-framework` brings it back.
 
 `/<name>` names a skill. Invoke it as `/<name>` in Cursor, Claude Code, and Antigravity, and as `$<name>` in Codex. `$ARGUMENTS` in a skill is the text typed with the invocation; where the harness leaves it literal, read it from the user's message.
 
@@ -14,9 +14,9 @@ A skill that delegates uses the harness's subagent tool: `Task` in Cursor, `Agen
 
 ## Working files
 
-`.sdd/` holds working files of the flow `/sdd-brainstorming` → `/sdd-prototype` → `/sdd-spec` → `/sdd-design` → `/sdd-implement`, never rules. `specs/` and `src/specs/` stay the source of truth; a brainstorm never overrides a rule.
+`.sdd/` holds the configuration the tools read and the working files of the flow `/sdd-brainstorming` → `/sdd-prototype` → `/sdd-spec` → `/sdd-design` → `/sdd-implement`, never rules. `specs/` and `src/specs/` stay the source of truth; a brainstorm never overrides a rule.
 
-- `.sdd/.sdd-config.json`: the framework version this repository is on, the remote it came from, and the layout the tools read: `paths.specs` (product specs, `specs/`), `paths.src` (code, `src/`), `paths.technical` (technical specs, `src/specs/`). The file marks the repository root for every tool; a path left out takes the default in parentheses. `perspectives` names each perspective of this product with the framework kind it came from, `skills` the skills kept; `/sdd-update-framework` moves `version`.
+- `.sdd/.sdd-config.json`: the framework version this repository is on, the remote it came from, and the layout the tools read: `paths.specs` (product specs, `specs/`), `paths.src` (code, `src/`), `paths.technical` (technical specs, `src/specs/`). The file marks the repository root for every tool; a path left out takes the default in parentheses. `perspectives` names each perspective of this product with the framework kind it came from, mirrored by `specs/PERSPECTIVES.md` and written by `/sdd-spec` (**Perspectives** in `specs/AGENTS.md`); `skills` names the skills kept, absent for all; `/sdd-update-framework` moves `version`; `paths` is set at the bootstrap and not moved afterwards.
 - `.sdd/brainstorming/<name>.md`: versioned draft of an idea. `/sdd-brainstorming` writes it, `/sdd-prototype` reads it, `/sdd-spec` consumes and deletes it.
 - `.sdd/prototypes/`: git-ignored. One worktree and one manifest per prototype, owned by `/sdd-prototype`.
 
@@ -58,7 +58,7 @@ Every field, for illustration; which ones a node carries depends on its kind, as
 }
 ```
 
-`modified` moves only when `hash` moves. `audited` is present only on a code node (**Audit** below). `rules` is absent without `spec.md`; `sources` is absent on a perspective node. A skill writes only the skeleton — `version` and `sources[].path`; every hash and `audited` are the tool's. The file is never edited by hand beyond those fields.
+`modified` moves only when `hash` moves. `audited` is present only on a code node (**Audit** below). `rules` is absent without `spec.md`; `sources` is absent on a perspective node and empty on a global technical node. A skill writes only the skeleton — `version` and `sources[].path`; every hash and `audited` are the tool's. The file is never edited by hand beyond those fields.
 
 **States**, computed by `pending`, never stored:
 
@@ -83,4 +83,4 @@ Every field, for illustration; which ones a node carries depends on its kind, as
 | `/sdd-audit` | the `sources[].path` of a code node on a judge's verdict — a technical spec the code obeys added, one whose placement puts the code elsewhere dropped, and the perspective nodes that follow — and `## Audit gap` of `TODO.md` | `metadata --write <dir>` on a node it changed; `metadata --approve <dir>` on a node the judge approved as listed |
 | pre-commit hook | — | `metadata --staged`: refreshes and stages the metadata of every node holding a staged file, never a sync. It hashes the working tree, so a partially staged file is hashed as it is on disk |
 
-The hook is `.githooks/pre-commit`; enable it once per clone with `git config core.hooksPath .githooks`. It needs Go. A `.metadata.json` whose own hash moved travels in the commit of the content it hashes; a sync that changed only its recorded sources — an acknowledgement, a revalidation — or an approval or sources edit of `/sdd-audit`, which never moves a hash, is a commit of its own, type `docs`.
+The hook is `.githooks/pre-commit`; enable it once per clone with `git config core.hooksPath .githooks`. It needs Go. A `.metadata.json` whose own hash moved travels in the commit of the content it hashes; a sync that changed only its recorded sources — an acknowledgement, a revalidation — or an approval or sources edit of `/sdd-audit`, which never moves a hash, is a commit of its own, type `docs` — unless the file was never committed, when it travels whole with its content.
