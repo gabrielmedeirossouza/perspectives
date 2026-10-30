@@ -13,9 +13,10 @@ export function validateSignIn(email: string, password: string): FieldErrors {
   return errors;
 }
 
-/** Errors shown under the fields of the sign-up page: empty fields and a short password. */
+/** Errors shown under the fields of the sign-up page: empty fields, an email without @, a short password. */
 export function validateSignUp(email: string, password: string): FieldErrors {
   const errors = validateSignIn(email, password);
+  if (!errors.email && !email.includes("@")) errors.email = "Enter a valid email";
   if (!errors.password && password.length < MIN_PASSWORD_LENGTH) errors.password = `Use at least ${MIN_PASSWORD_LENGTH} characters`;
   return errors;
 }

@@ -28,8 +28,8 @@ export function CredentialsForm({ title, submitLabel, validate, submit }: Creden
   return (
     <main>
       <h1>{title}</h1>
+      {message && <p role="alert">{message}</p>}
       <form onSubmit={onSubmit} noValidate>
-        {message && <p role="alert">{message}</p>}
         <label>
           Email
           <input name="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
