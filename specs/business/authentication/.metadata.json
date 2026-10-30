@@ -1,13 +1,14 @@
 {
   "version": 1,
   "algorithm": "sha256",
-  "hash": "a41060be42bbc022e8da04d82fea76be42c0db793cac3efca88d519eee292ed6",
-  "modified": "2026-10-30T18:44:12Z",
+  "hash": "d1582a91fe2340cd912f7996d232421fb3627b294eb554238528573079cb6f86",
+  "modified": "2026-10-30T19:11:18Z",
   "rules": {
     "Credentials prove the account": "d21a8f3946af7d8e5ee06fabbc88218d200c6f63562308411820bb133de30538",
     "Data isolation by account": "e9b466b876d66621d3dd123295d6aec7749acefc4ce1ee323347f1160cfc9da1",
-    "Minimum password length": "02d823834c84642eaed09e6232b5c4e9b05dc240fca5172ce69f573b87f56483",
+    "Email shape": "cb554bf63aad1088ccf5ae8f9ef246afec810ea27b4f7ee94bd752a5eeb02b73",
     "One account per email": "356cc563d7014bea1cd2c936f8fd4d3896045461467a6a4b9bfa796dda17a0a6",
+    "Password length": "6f909bd32323cdd361883bbc8936ade11771e056a2188eec0eae237ff6ef4080",
     "Session lifetime": "4f0253b5271d1aa99fedfd434d1749608a334d636f27b1b420ce18b11f1f00fc"
   }
 }

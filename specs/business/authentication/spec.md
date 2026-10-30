@@ -10,11 +10,13 @@ Who may hold an account, how a member proves an account is theirs, and how long 
 
 An email address **must** identify at most one account. A sign-up with an email that already identifies an account **must** be refused.
 
-### Minimum password length
+### Email shape
 
-A password **must** have at least 8 characters. No other rule constrains it.
+A sign-up email **must** contain `@` and have at most 254 characters; a sign-up with any other email **must** be refused.
 
-## Sign in
+### Password length
+
+A password **must** have at least 8 and at most 128 characters. No other rule constrains it.
 
 ### Credentials prove the account
 
