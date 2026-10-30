@@ -1,0 +1,61 @@
+package md
+
+import (
+	"reflect"
+	"testing"
+)
+
+func TestSectionsSkipFencesAndDeepHeadings(t *testing.T) {
+	text := "# A\n\nintro\n\n```md\n## not a heading\n```\n\n## B\n\n### C\n\nbody\n\n#### D\n\nmore\n~~~\n### hidden\n~~~\n### E\n"
+	var titles []string
+	for _, s := range Sections(text) {
+		titles = append(titles, s.Title)
+	}
+	if want := []string{"A", "B", "C", "E"}; !reflect.DeepEqual(titles, want) {
+		t.Fatalf("titles = %v, want %v", titles, want)
+	}
+	c := Sections(text)[2]
+	if c.Level != 3 || !contains(c.Lines, "#### D") || !contains(c.Lines, "### hidden") {
+		t.Fatalf("section C = %+v", c)
+	}
+}
+
+func TestFenceClosesOnlyWithSameMarker(t *testing.T) {
+	text := "```\n~~~\n## inside\n```\n## outside\n"
+	s := Sections(text)
+	if len(s) != 1 || s[0].Title != "outside" {
+		t.Fatalf("sections = %+v", s)
+	}
+}
+
+func TestRulesTrimBlankLines(t *testing.T) {
+	rules := Rules("## S\n\n### R1\n\nbody one\n\n\n### R2\nbody two\n\n#### Sub\n\nkept\n\n## T\n\n### R3\r\nwindows\r\n")
+	want := []Rule{
+		{"R1", "body one"},
+		{"R2", "body two\n\n#### Sub\n\nkept"},
+		{"R3", "windows"},
+	}
+	if !reflect.DeepEqual(rules, want) {
+		t.Fatalf("rules = %#v, want %#v", rules, want)
+	}
+}
+
+func contains(lines []string, s string) bool {
+	for _, l := range lines {
+		if l == s {
+			return true
+		}
+	}
+	return false
+}
+
+func TestFenceIndentationFollowsCommonMark(t *testing.T) {
+	text := "### A\n\n   ```\n   ### inside three-space fence\n   ```\n### B\n\n    ```\n### C after an indented code block, not a fence\n"
+	var titles []string
+	for _, s := range Sections(text) {
+		titles = append(titles, s.Title)
+	}
+	if !reflect.DeepEqual(titles, []string{"A", "B", "C after an indented code block, not a fence"}) {
+		t.Fatalf("titles = %v", titles)
+	}
+}
