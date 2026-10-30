@@ -217,7 +217,7 @@ The `#…` fragment is the slug the editor and GitHub generate from the target t
 
 Do not strip diacritics: `Invalid credentials with generic message` → `#invalid-credentials-with-generic-message`. Punctuation removed between words leaves consecutive hyphens; that is correct (`Multi-tab session — product rules` → `#multi-tab-session--product-rules`).
 
-Renaming a title updates every mention and `#anchor`. The technical specs that serve the rule show the rename in `pending`, told from a body change by the rule hash.
+Renaming a title updates every mention and `#anchor`. The technical specs that serve the rule show the rename in `pending`, told from a body change by the rule hash. A link in a spec that names no file, or no heading of the markdown file it names, is drift (**Metadata** in the root `AGENTS.md`): a title removed or renamed leaves it in every spec that cites the title until that spec's writer fixes it — `/sdd-spec` under `specs/`, `/sdd-design` under `src/specs/`.
 
 ## Metadata
 
