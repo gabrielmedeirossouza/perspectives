@@ -10,9 +10,10 @@
 //	              sides changed (conflict markers stay in the file), delete
 //	              what the framework removed and the project never touched,
 //	              then record M as the version of .sdd/.sdd-config.json
-//	--from <dir>  a checkout of the framework: its working tree is M and its
-//	              history holds N (default: a clone of the remote of
-//	              .sdd/.sdd-config.json, removed afterwards)
+//	--from <dir>  a checkout of the framework, relative to the project root:
+//	              its working tree is M and its history holds N (default: a
+//	              clone of the remote of .sdd/.sdd-config.json, removed
+//	              afterwards)
 //	--root <dir>  project root, absolute (default: nearest directory at or
 //	              above the working directory with .sdd/.sdd-config.json;
 //	              inside a framework checkout, pass it)
@@ -100,9 +101,8 @@ func main() {
 		}
 		from, source = tmp, cfg.Remote
 	}
-	from, err = filepath.Abs(from)
-	if err != nil {
-		fail(err.Error(), 1)
+	if !filepath.IsAbs(from) {
+		from = filepath.Join(root, from) // go run -C moves the working directory; the root is what the user sees
 	}
 	p, err := plan(root, from, cfg)
 	if err != nil {
