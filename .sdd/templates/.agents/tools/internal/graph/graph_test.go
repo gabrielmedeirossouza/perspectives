@@ -164,8 +164,11 @@ func TestPolicyChangeReachesDesignThenCode(t *testing.T) {
 	if !has(g.Design(), "`"+I+"` is stale against `"+P+"`: changed \"Invite expiry\"") {
 		t.Fatalf("design = %v", g.Design())
 	}
+	if !has(g.Design(), "— waits: `"+P+"` has drift") {
+		t.Fatalf("design does not wait on the unwritten metadata of %s: %v", P, g.Design())
+	}
 	units := g.Units()
-	if len(units) != 1 || units[0].Dir != "src/backend/invite" || !strings.Contains(units[0].Wait, "`"+I+"` is stale") {
+	if len(units) != 1 || units[0].Dir != "src/backend/invite" || !strings.Contains(units[0].Wait, "`"+P+"` has drift") {
 		t.Fatalf("units = %+v", units)
 	}
 	if r := units[0].Rules; len(r) != 1 || r[0] != (RuleState{Title: "Invite expiry", State: "changed", Source: P}) {
@@ -1292,5 +1295,61 @@ func TestCodeWaitsOnTheDriftOfASource(t *testing.T) {
 	run, wait := g.Batch(5)
 	if len(run) != 0 || len(wait) != 1 || !strings.Contains(wait[0].Wait, "`"+I+"` has drift") {
 		t.Fatalf("run = %+v wait = %+v", run, wait)
+	}
+}
+
+func TestDesignAndCodeWaitOnTheDriftOfAFreshSource(t *testing.T) {
+	root := fixture(t)
+	settle(t, root)
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## Tests\n\n### Vitest as test runner\n\nTests **must** run on `vitest`.\n\n### Lint\n\nLint **must** pass.\n")
+	sync(t, root, T)
+	if err := os.Remove(filepath.Join(root, metaOf(P))); err != nil {
+		t.Fatal(err)
+	}
+	g := load(t, root)
+	if !has(g.Design(), "`"+I+"` is stale against `"+T+"`: added \"Lint\" — waits: `"+P+"` has drift") {
+		t.Fatalf("design = %v", g.Design())
+	}
+	if u := g.Units(); len(u) != 1 || !strings.Contains(u[0].Wait, "`"+P+"` has drift") {
+		t.Fatalf("units = %+v", u)
+	}
+}
+
+func TestUpstreamPerspectiveDriftDoesNotMakeCodeWait(t *testing.T) {
+	root := fixture(t)
+	const O = "specs/business/other/spec.md"
+	write(t, root, O, "# Other\n\nPurpose.\n\n## A\n\n### Other rule\n\nIt **must** hold.\n")
+	write(t, root, metaOf(T), `{"version": 2, "sources": [{"path": "`+O+`"}]}`+"\n")
+	write(t, root, metaOf(C), `{"version": 2, "sources": [{"path": "`+I+`"}, {"path": "`+P+`"}]}`+"\n")
+	sync(t, root, O)
+	settle(t, root)
+	write(t, root, I, "# Invite\n\nPurpose.\n\n## HTTP\n\n### Invite endpoint\n\n`POST /invites` **must** create one and answer `201`.\n")
+	sync(t, root, I)
+	if err := os.Remove(filepath.Join(root, metaOf(O))); err != nil {
+		t.Fatal(err)
+	}
+	g := load(t, root)
+	run, wait := g.Batch(5)
+	if len(wait) != 0 || len(run) != 2 || run[1].Dir != "src/backend/invite" {
+		t.Fatalf("run = %+v wait = %+v", run, wait)
+	}
+	if _, err := g.Sync(g.Node(C), time.Now()); err != nil {
+		t.Fatalf("sync of %s refused for the drift of a perspective upstream: %v", C, err)
+	}
+}
+
+func TestLinkIntoAFileDeletedButStillTrackedIsBroken(t *testing.T) {
+	root := fixture(t)
+	const O = "specs/business/other/spec.md"
+	write(t, root, O, "# Other\n\nSee [invite](../invite/spec.md) and [single use](../invite/spec.md#single-use).\n")
+	if out, err := exec.Command("git", "-C", root, "add", "-A").CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v %s", err, out)
+	}
+	if err := os.RemoveAll(filepath.Join(root, "specs/business/invite")); err != nil {
+		t.Fatal(err)
+	}
+	g := load(t, root)
+	if d := g.NodeDrift(g.Node(O)); has(d, "has no heading") || !has(d, "links `../invite/spec.md`, but `specs/business/invite/spec.md` does not exist") || !has(d, "links `../invite/spec.md#single-use`, but `specs/business/invite/spec.md` does not exist") {
+		t.Fatalf("drift of %s = %v", O, d)
 	}
 }
