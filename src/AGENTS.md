@@ -1,24 +1,70 @@
 # Source
 
-Product code lives in this tree. Policy and mechanism rules live in `perspectives/`; how code materializes them — the implementation postulates and the Implementation gate — lives here.
+Technical specs and product code live in this tree. Product rules live in `perspectives/`; how they are built lives in `src/specs/`; how code materializes both — the implementation postulates and the Implementation gate — lives here. Nodes, sources, and states are defined under **Metadata** in the root `AGENTS.md`.
 
 ## Tree
 
 ```
 src/
-  backend/
-  frontend/
+  AGENTS.md                          # this file: law of the tree
+  BUG-AUTOPSIES.md                   # stateful record of corrected bugs
+  INCREMENTAL-TESTING-GUIDELINES.md  # stateful record of testing practices
+  specs/<name>/                      # one technical spec; <name> ASCII kebab-case
+    spec.md
+    .metadata.json                   # sources: the perspective specs it serves, the technical specs it depends on
+  <code directory>/                  # a code node: any directory /implement declares
+    .metadata.json                   # sources: the technical specs its code obeys and the perspective specs they serve
+  .metadata.json                     # iff src/ itself is the code node of the root manifests
 ```
+
+Where code goes is a technical rule, not a convention of this file: a technical spec states the placement, and `/implement` declares the directory as a node. A file under `src/` outside every node is drift. Files directly under `src/` ending in `.md` are chrome: no node's content, never drift. The root manifests and configuration of the code — `go.mod`, `package.json`, lockfiles, compiler settings — live where the global technical spec that decides them says; when that is `src/` itself, `/implement` declares `src/` a code node listing that spec.
+
+## Technical spec
+
+A technical spec states **how** a part of the system is built: placement, contracts (HTTP verbs, status codes, payloads), persistence, libraries and their versions, toolchain, runtime, test runner, lint, code layering, env vars, numeric limits, command entry points. It never states who may, when it expires, what the screen shows, what the click does, or who may ship — those are product rules in `perspectives/`, which it serves.
+
+`<name>` names what the spec builds, by the code boundary it decides, not by a perspective: a module (`invite`), a shared mechanism (`http-client`), or a global constraint that would hold with no feature in the repository (`toolchain`, `backend-layering`). A global technical spec is a node like any other; every code node it constrains lists it as a source.
+
+### Skeleton and format
+
+Same **Spec file** skeleton as `perspectives/AGENTS.md`: `#` the name of what it builds, one purpose sentence, then `##` subjects and `###` rules. Same **Rule format**, **Title** rules, **Anchors**, and postulates P1–P7; the scope test is this section. Spec language is English. The glossary `CONTEXT.md` is consumed, never edited here.
+
+```markdown
+# Invite
+
+How invites are built: placement, persistence, and the HTTP contract.
+
+## HTTP
+
+### Invite creation endpoint
+
+`POST /invites` **must** create one invite and answer `201` with its id. Serves [Invite expiry](../../../perspectives/business/invite/spec.md#invite-expiry).
+```
+
+### Vocabulary
+
+- Titles stay prose (`Single HTTP client`). A rule that names a library or system tool **states the package** in the body (`acme-http`), with its version when the version is a decision.
+- A rule states **one** decision with `must`, `must not`, `never`, `only`, `prohibited`. Facultative modals (`may`, `can be`, `ideally`, `prefer`), `or equivalent`, and `X or Y` are not a rule.
+- An indirection — interface, port, layer, wrapper, shared helper — is written only with a pain trigger stated in the body: a second real implementation, an anti-corruption layer, or a second real consumer.
+- A rule cites the product rule it serves by title, with a link into `perspectives/`, and never restates it. A global technical spec serves no single product rule and cites none.
+
+### Adopted patterns
+
+A global technical spec may carry a `## Adopted patterns` heading: the system uses a mechanism, and each technical spec that builds a feature **must** state whether it adopts it. Each pattern is one list item, never a `###` rule: the mechanism, and where its concrete rules live once adopted. The adopting spec answers with one list item under its own `## Adopted patterns` heading — adopts, or does not and why. A pattern obligates the person writing the spec, not the product. Create the heading when its first entry exists.
+
+### Sources
+
+The `.metadata.json` of a technical spec lists as `sources[].path` the perspective nodes whose rules it serves and the technical nodes it depends on. A perspective node no technical spec lists is pending design; a technical spec whose source changed is stale until `/design` reviews it and syncs. The write ends with `go run -C .agents/tools ./metadata --sync src/specs/<name>`.
 
 ## Implementation postulates
 
-These rules govern how source code materializes the specifications in `perspectives/`. They apply to code under `src/` and do not define product behavior or its mechanism.
+These rules govern how source code materializes the specifications. They apply to code under `src/` and do not define product behavior or its technical rules.
 
 Violation is a grave failure. Volume, age, or “already reviewed” does not excuse it. Numbered **C** so they do not collide with the spec postulates **P** in `perspectives/AGENTS.md`.
 
-**C1 Fidelity.** Code covers the whole rule body — conditions, exceptions, effects, forbidden values. Extra-normative behavior is a failure. Partial coverage presented as done is a failure. Ambiguous rule: stop and report to `/spec`.
+**C1 Fidelity.** Code covers the whole rule body — conditions, exceptions, effects, forbidden values — of every product and technical rule the code node lists. Extra-normative behavior is a failure. Partial coverage presented as done is a failure. Ambiguous rule: stop and park a design gap; `/design` closes it or escalates it to `/spec`.
 
-**C2 Tests after implementation.** Tests are written only after the code of every rule in the `/implement` run is complete — never before or alongside the code. Only unit tests are required. Tests hit the module's public surface (`index.ts`, exported rules and pure helpers), not internal file shape. Risk sets **how many** scenarios, never whether a suite exists.
+**C2 Tests after implementation.** Tests are written only after the code of every rule in the `/implement` run is complete — never before or alongside the code. Only unit tests are required. Tests hit the module's public surface (its entry file, exported rules, and pure helpers), not internal file shape. Risk sets **how many** scenarios, never whether a suite exists.
 
 | Band | When the rule is | Suite |
 |------|------------------|-------|
@@ -28,41 +74,41 @@ Violation is a grave failure. Volume, age, or “already reviewed” does not ex
 
 On critical vs common, treat as critical. A suite that breaks on an internal rename is pinned to implementation. Mocking the database is allowed; a port whose only job is to enable a mock is C7. Asserting “the repository was called once” is not a behavior test. Coverage percentage does not replace scenarios.
 
-**C3 Mechanism law.** New or changed code obeys the applicable `mechanism.md`, the global mechanism rules of the perspective's `AGENTS.md`, and the global mechanism rules of `perspectives/development/AGENTS.md`. A mechanism with no rule, a package named only as “the persistence client”, or an open alternative (`X or Y`, `or equivalent`): stop and report to `/spec`. Copy and names follow `CONTEXT.md`; this tree does not edit the glossary.
+**C3 Technical law.** New or changed code obeys every technical spec its code node lists as a source, the global ones included. A mechanism with no rule, a package named only as “the persistence client”, or an open alternative (`X or Y`, `or equivalent`): stop and report to `/design`. Copy and names follow `CONTEXT.md`; this tree does not edit the glossary.
 
 **C4 Broken windows.** A neighboring deviation is not a warrant to copy it. Implement the rule in force; report the deviation.
 
 **C5 One implementation.** The same documented obligation is not reimplemented in parallel. Copy vs coincidence: if the correct change to A requires the same change in B, it is copy — one owner, consumers call that module's public API. If A and B may diverge, leave them. Extract at the **second real consumer**, not in anticipation. A shared helper with one consumer is C7, not a C5 win.
 
-**C6 Paths.** After the code exists, the tracking entry lists every file that realizes the rule (code, tests, relevant directories), one repo-relative backtick path per line. Dead paths and omitted essentials are failures. Mark `[x]` only after the rule is 100% implemented, its required tests are green, and applicable validation is complete. `Removed:` is processed before new work on that feature: delete exclusive orphan code, then delete the entry. Spec skills write headings and change flags; implementation writes completion marks and paths.
+**C6 Sources.** Every directory `/implement` writes code into belongs to a code node whose `.metadata.json` lists every technical spec its code obeys directly and every perspective node those serve. `/implement` keeps that list: it adds a perspective node a technical spec came to serve (`pending`: missing source) and drops a source whose spec is gone (dangling). A code file under no node is a failure. The node is synced (`metadata --sync <dir>`) only when every rule its sources hold is 100% implemented, its required tests are green, and applicable validation is complete; until then it stays stale, and stale is the only pending mark. A removed rule is processed before new work on that node: delete exclusive orphan code, then sync.
 
-**C7 Economy.** The fewest files and indirections that satisfy the rule. Interface, port, layer, mapper, wrapper, or shared helper only with a pain trigger declared in `mechanism.md`: second real implementation, an anti-corruption layer, or C5's second consumer. “Needed for tests” is not a trigger. Folder-by-technical-type inside a module (`domain/`, `use-cases/`, `dtos/`, `mappers/`) is a failure unless a mechanism rule obligates it.
+**C7 Economy.** The fewest files and indirections that satisfy the rule. Interface, port, layer, mapper, wrapper, or shared helper only with a pain trigger declared in the technical spec: second real implementation, an anti-corruption layer, or C5's second consumer. “Needed for tests” is not a trigger. Folder-by-technical-type inside a module (`domain/`, `use-cases/`, `dtos/`, `mappers/`) is a failure unless a technical rule obligates it.
 
-**C8 Closed spec.** Only what the policy and mechanism rule bodies state, plus what applicable global mechanism rules fix. Inventing a field, endpoint, or library, picking among open alternatives, or inferring stack from surrounding code or market default is a failure. Stop and report.
+**C8 Closed spec.** Only what the product and technical rule bodies state. Inventing a field, endpoint, or library, picking among open alternatives, or inferring stack from surrounding code or market default is a failure. Stop and report to `/design`.
 
 ## Implementation gate
 
-**Done when:** every targeted rule has code that holds C1–C8; the path list matches those files; the tracking entry is marked `[x]`; `Removed:` on the path is cleaned or gone; diagnostics show no introduced blocking errors; the unit suite written after the run's code is green.
+**Done when:** every targeted rule has code that holds C1–C8; each code node written lists its sources; diagnostics show no introduced blocking errors; the unit suite written after the run's code is green; each finished node is synced.
 
-1. **Reach** this file, `perspectives/AGENTS.md`, `perspectives/development/AGENTS.md`, and the nested `AGENTS.md` of the perspective that owns the rule — that file holds the perspective's global rules as well. Read the rule body, its sibling `mechanism.md`, and `CONTEXT.md`.
-2. **Implement** the whole rule body. Place it where the mechanism rules say (C3, C7). Write no test in this step.
+1. **Reach** the root `AGENTS.md` (**Metadata**), this file, and `perspectives/AGENTS.md`. Read the technical spec, the perspective specs it serves, and `CONTEXT.md`. `pending` names the rules that changed and their state.
+2. **Implement** the whole rule body. Place it where the technical spec says (C3, C7). A new directory gets its `.metadata.json` — `{"version": 1, "sources": [...]}`, paths relative to the repository root — then `go run -C .agents/tools ./metadata --write <dir>`. Write no test in this step.
 3. **Sense:** diagnostics (as the root `AGENTS.md` defines them) before the first edit and after each executable edit. Distinguish pre-existing diagnostics from introduced ones. Fix introduced ones. If diagnostics are down, stop and report.
 4. **Test** once every rule in the run has code: band each rule (C2), write its public-surface suite, and run it green. If the test runner is down, stop and report.
-5. **Complete tracking:** process `Removed:` first when present; write paths on the existing tracking heading (C6), and mark `[x]` only when the rule is 100% implemented and its tests are green.
-6. **Stop.** Do not edit spec files or `CONTEXT.md` during implementation. In `TODO.md`, only park a spec gap under `## Spec gap`. Do not create, rename, or delete a tracking heading except to delete an entry after `Removed:` is cleaned.
+5. **Sync:** `go run -C .agents/tools ./metadata --sync <dir>` for each code node whose rules are 100% implemented with green tests. A node with anything left stays unsynced.
+6. **Stop.** Do not edit spec files, `CONTEXT.md`, or any `.metadata.json` beyond `sources[].path` during implementation. In `TODO.md`, only park a design gap under `## Design gap`.
 
 | | Ask |
 |--|------|
 | C1 | Does the code cover the whole body, including exceptions? |
 | C2 | Tests written only after the run's code? Band scenarios and critical edges present? |
-| C3 | Does placement and stack match the mechanism rules? Is a mechanism unnamed? |
+| C3 | Does placement and stack match the technical specs the node lists? Is a mechanism unnamed? |
 | C4 | Am I copying a neighboring deviation? |
 | C5 | Copy (one owner) or coincidence? Second real consumer? |
-| C6 | Does the path list match the files? Is `Removed:` still pending? |
+| C6 | Does the node list every technical spec it realizes and the perspective specs they serve? Is a removed rule still in the code? |
 | C7 | Does every extra file or indirection have a declared trigger? |
 | C8 | Did I invent behavior or pick an open alternative? |
 
-Permissions for implementation: create, edit, and delete code and tests under `src/`. Write, update, and delete **paths** on tracking entries, and delete an entry after `Removed:` is cleaned. Spec skills own spec files and tracking headings; `CONTEXT.md` and `TODO.md` follow the Writing gate of `perspectives/AGENTS.md`, except the `## Spec gap` items implementation parks.
+Permissions for implementation: create, edit, and delete code and tests under `src/` outside `src/specs/`; write `sources[].path` of its code nodes' `.metadata.json`; run the metadata tool. `/design` owns `src/specs/`; `CONTEXT.md` and `TODO.md` follow the Writing gate of `perspectives/AGENTS.md`, except the `## Design gap` items implementation parks.
 
 ## Bug autopsy
 

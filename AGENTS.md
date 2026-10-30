@@ -1,4 +1,4 @@
-Perspectives (`perspectives/`) are the product source of truth. Reach `perspectives/AGENTS.md` when the work is product behavior or specs. Reach `src/AGENTS.md` when implementing code against a rule.
+Perspectives (`perspectives/`) are the product source of truth: what the system does, for whom. Technical specs (`src/specs/`) say how it is built. Code (`src/`) materializes both. Reach `perspectives/AGENTS.md` for product behavior or specs, `src/AGENTS.md` for technical specs or code. Every spec directory and every code directory `/implement` declares is a node of **Metadata**; `pending` is the observer that reads them.
 
 ## Harnesses
 
@@ -12,18 +12,66 @@ A skill that delegates uses the harness's subagent tool: `Task` in Cursor, `Agen
 
 ## Working files
 
-`.sdd/` holds working files of the flow `/brainstorming` → `/prototype` → `/spec` → `/implement`, never rules. `perspectives/` stays the source of truth; a brainstorm never overrides a rule.
+`.sdd/` holds working files of the flow `/brainstorming` → `/prototype` → `/spec` → `/design` → `/implement`, never rules. `perspectives/` and `src/specs/` stay the source of truth; a brainstorm never overrides a rule.
 
 - `.sdd/brainstorming/<name>.md`: versioned draft of an idea. `/brainstorming` writes it, `/prototype` reads it, `/spec` consumes and deletes it.
 - `.sdd/prototypes/`: git-ignored. One worktree and one manifest per prototype, owned by `/prototype`.
 
 ## Tools
 
-`.agents/tools/` holds procedures agents turned into code, so a later session runs them instead of redoing them by hand. Its law and catalog are in `.agents/tools/AGENTS.md`. Reach it before any mechanical procedure over the repository — a scan, a cross-check, a lookup.
+`.agents/tools/` holds procedures agents turned into code, in Go, so a later session runs them instead of redoing them by hand. Its law and catalog are in `.agents/tools/AGENTS.md`. Reach it before any mechanical procedure over the repository — a scan, a cross-check, a lookup.
 
 - **Reuse.** A catalog entry answers the question → run it; do not redo it by hand. Wrong or incomplete output → fix the tool in the same session; do not work around it.
 - **Create.** A session that performs by hand a deterministic procedure — same inputs, same answer, no judgment — that a later session will repeat, such as a skill step or a scan over `perspectives/`, writes it as a tool, runs it against the repository, and adds its catalog row, in the same session.
 - **One tool per question.** A neighboring question becomes a flag of the existing tool, not a second tool.
 - **Judgment is not a tool.** A recurring procedure that needs judgment goes in the report as a proposed skill change.
+- **Read-only.** A tool reports; the skill writes. The one exception is `.metadata.json`, which `metadata` writes beyond the skeleton a skill authors: `version` and `sources[].path`.
 
-Every skill may create and edit files under `.agents/tools/` on top of its own permissions. `/prototype` is the exception: it names tool candidates in its report.
+Scripts and tooling of this repository are written in Go, standard library only; none is Python, TypeScript, or JavaScript. The pre-commit hook is the one shell file, a shim whose only command execs a Go tool. Every skill may create and edit files under `.agents/tools/` on top of its own permissions. `/prototype` is the exception: it names tool candidates in its report.
+
+## Metadata
+
+Sync between a spec and what consumes it is not written by hand. Every consumer records the version of each source it last validated against; a tool computes what is stale. Nothing records what consumes it.
+
+**Node** = a directory with `.metadata.json`. Under `perspectives/`, every directory holding `spec.md` is a node, and the tool creates its file. Under `src/`, a node is declared by the skill that writes its `.metadata.json`. Kinds, by place: **perspective** under `perspectives/`, **technical** under `src/specs/`, **code** elsewhere under `src/`. `src/` itself may be a code node: the one that holds the root manifests and configuration a global technical spec decides (`go.mod`, `package.json`, lockfiles, compiler settings).
+
+**Content** = every regular file git tracks or would track (not ignored) under the node's directory, recursively, except `.metadata.json`, `AGENTS.md`, the files directly under `src/` ending in `.md` (chrome), and the subtrees of other nodes. **Hash** = sha256 of the sorted entries `<path relative to the node>\0<sha256 of the bytes>\n`. Raw bytes, no normalization. **Rules**, when the node holds `spec.md`: each `###` title outside code fences → sha256 of its body, the lines up to the next heading of level 1–3 with blank lines at both ends removed. The title stays outside its hash, so a rename is told from a change.
+
+**Sources** a node may list: a technical node lists the perspective nodes it serves and the technical nodes it depends on; a code node lists every technical node whose rules its code obeys directly — not only the one it is named after — and every perspective node those serve, so a product-only change reaches the code; a perspective node lists none. A product change reaches code only through the code nodes that list that perspective; it does not travel through technical dependencies, which is why a technical node no code node lists is pending.
+
+```json
+{
+  "version": 1,
+  "algorithm": "sha256",
+  "hash": "<hash of this node>",
+  "modified": "2026-10-29T18:04:12Z",
+  "rules": { "<title>": "<sha256 of the body>" },
+  "sources": [
+    { "path": "perspectives/business/invite", "hash": "<hash the source had at the last sync>", "rules": { "<title>": "<hash>" } }
+  ]
+}
+```
+
+`modified` moves only when `hash` moves. `rules` is absent without `spec.md`; `sources` is absent on a perspective node. A skill writes only the skeleton — `version` and `sources[].path`; every hash is the tool's. The file is never edited by hand beyond those fields.
+
+**States**, computed by `pending`, never stored:
+
+| State | Means | Owed by |
+|-------|-------|---------|
+| drift | a `.metadata.json` missing, orphan (no `spec.md` beside it), unreadable, or not matching its content; a duplicate rule title; a source a node may not list; a perspective node a code node lists that none of its technical specs serves; a file under `src/` outside any node; technical specs that source each other in a cycle; a gap in `TODO.md` that matches no rule | whoever last wrote there: `metadata --write`, or fix the sources |
+| stale | a source's current hash differs from the recorded one; the rule delta names what was added, changed, removed, or renamed. On a code node, also: a perspective node its technical specs serve that it does not list yet | `/design` on a technical node, `/implement` on a code node |
+| dangling | a listed source is no node | same as stale |
+| unconsumed | a perspective node no technical node lists; a technical node no code node lists | `/design`; `/implement` |
+| waits | a code node whose technical spec, or one upstream of it, is stale or dangling; a unit whose every rule a `## Design gap` item parks | `/design` first |
+| fresh | none of the above; on a code node it means implemented and tested, because only a passed Implementation gate syncs it | — |
+
+**Writers:**
+
+| Writer | Writes | Then runs |
+|--------|--------|-----------|
+| `/spec` | `perspectives/**/spec.md` | `metadata --write <dir>` |
+| `/design` | `src/specs/<name>/spec.md` and the `sources[].path` of its node | `metadata --sync <dir>`, also to acknowledge a stale source that needs no change |
+| `/implement` | code and the `sources[].path` of its code nodes: a new node, a perspective node its technical specs came to serve, a dangling source dropped | `metadata --write` on a new node; `metadata --sync <dir>` only after the Implementation gate |
+| pre-commit hook | — | `metadata --staged`: refreshes and stages the metadata of every node holding a staged file, never a sync. It hashes the working tree, so a partially staged file is hashed as it is on disk |
+
+The hook is `.githooks/pre-commit`; enable it once per clone with `git config core.hooksPath .githooks`. It needs Go. A `.metadata.json` whose own hash moved travels in the commit of the content it hashes; a sync that changed only its recorded sources — an acknowledgement, a revalidation — is a commit of its own, type `docs`.

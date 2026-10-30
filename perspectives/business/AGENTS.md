@@ -1,31 +1,27 @@
 # Business
 
-Product policy and the mechanism of each business feature live here, plus the policy and mechanism that hold across every one of them.
+Product policy of each business feature lives here, plus the policy that holds across every one of them.
 
 ## Feature
 
 `<feature>` names a business domain boundary that owns product behavior independently, such as invites, notifications, authentication, or external integrations.
 
-Architecture layers, test runners, persistence conventions, shared infrastructure, storage mechanisms, and other technical classifications are not Business features. Rules for those concerns belong to `## Global mechanism rules` when they constrain more than one business feature, or to `development/` when they constrain the form of the code regardless of feature.
+Architecture layers, test runners, persistence, shared infrastructure, storage, and other technical classifications are not Business features and not Business rules. They are technical specs under `src/specs/`.
 
 Owner examples:
 
-- ID policy, transactions, queues, realtime infrastructure, and shared blob storage are global mechanism rules.
-- Vitest, backend layering, and DTO placement are `development/` rules.
-- Invite HTTP contracts belong to the invite feature.
-- Notification aggregation and realtime contracts belong to the notification feature when they exist only to deliver that domain capability.
-- A mechanism that each feature must adopt or reject independently is an adopted pattern, not a global runtime rule.
+- Who may invite, when an invite expires, and what makes an account active belong to the invite and account features.
+- A rule that holds for every business feature — every mutation is audited, every record belongs to one workspace — is a global rule in `business/spec.md`.
+- The HTTP contract of an invite, its persistence, and the queue that delivers a notification are technical specs under `src/specs/`, serving these rules by title.
 
-## Layers
+## Scope
 
-| File | Holds | Does not hold |
-|------|--------|----------------|
-| `policy.md` | Policy: states, permissions, invariants, who may do what and when | Mechanism: libraries, paths |
-| `mechanism.md` | Mechanism: placement, contracts, persistence, libraries, operation | Policy: who may, when it expires, what the screen shows, what the click does |
+| `spec.md` holds | `spec.md` does not hold |
+|-----------------|-------------------------|
+| Policy: states, permissions, invariants, who may do what and when | Surface: what the screen shows, what the click does. Technical: libraries, placement, contracts, persistence |
 
 ## Vocabulary
 
-| Layer | Write | Leave out |
-|-------|--------|-----------|
-| Policy | Ubiquitous English domain prose (`active account`, `email verified`) | Mechanism, surface, layout |
-| Mechanism | Package names, placement, HTTP verbs, status codes, env vars, numeric limits | Product who/when/limit, what the screen shows, `or equivalent`, `X or Y` |
+| Write | Leave out |
+|-------|-----------|
+| Ubiquitous English domain prose (`active account`, `email verified`) | Technical names, surface, layout |
