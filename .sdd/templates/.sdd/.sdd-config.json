@@ -1,5 +1,5 @@
 {
-  "version": 26,
+  "version": 27,
   "remote": "https://github.com/gabrielmedeirossouza/perspectives.git",
   "paths": { "specs": "specs", "src": "src", "technical": "src/specs" },
   "perspectives": [
