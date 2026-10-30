@@ -10,7 +10,7 @@ description: >-
 
 # sdd-sandbox
 
-Reach the root `AGENTS.md` (**Sandboxes**) and the brief `.sdd/sandbox/<name>.md` before acting. A sandbox is a consumer of the framework, never its source: a defect found there is fixed in `.sdd/templates/` on `main` and brought into the sandbox with `/sdd-update-framework --from ../..`.
+Reach the root `AGENTS.md` (**Sandboxes**) and the brief `.sdd/sandbox/<name>.md` before acting. A sandbox is a consumer of the framework, never its source: a defect found there is fixed in `.sdd/templates/` on `main` and brought into the sandbox with `/sdd-update-framework --from ../../..`.
 
 Invoking `/sdd-sandbox` authorizes the worktree, the branch, the bootstrap commit, and the push of the branch. `--discard` still asks once before destroying.
 

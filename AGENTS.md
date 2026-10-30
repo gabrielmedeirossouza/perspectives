@@ -30,7 +30,7 @@ Tests: `go vet ./... && go test ./...` with `-C .sdd/templates/.agents/tools`, a
 
 ## Sandboxes
 
-`/sdd-sandbox <name>` creates `.sdd/sandbox/<name>/`, a git worktree on `sandbox/<name>`, bootstraps the framework there for the product of `.sdd/sandbox/<name>.md` through `TEMP_BOOTSTRAP.md`, and pushes the branch. The flow — `/sdd-brainstorming`, `/sdd-spec`, `/sdd-design`, `/sdd-implement`, `/sdd-audit`, `/sdd-commit` — runs in an agent session opened inside the worktree, whose `.claude/skills/` is the materialized one, answering the interviews from the brief's **Decisions**. A sandbox is a consumer: a defect found there is fixed in `.sdd/templates/` on `main` and brought in with `/sdd-update-framework --from ../..`. The first sandbox is `finance`.
+`/sdd-sandbox <name>` creates `.sdd/sandbox/<name>/`, a git worktree on `sandbox/<name>`, bootstraps the framework there for the product of `.sdd/sandbox/<name>.md` through `TEMP_BOOTSTRAP.md`, and pushes the branch. The flow — `/sdd-brainstorming`, `/sdd-spec`, `/sdd-design`, `/sdd-implement`, `/sdd-audit`, `/sdd-commit` — runs in an agent session opened inside the worktree, whose `.claude/skills/` is the materialized one, answering the interviews from the brief's **Decisions**. A sandbox is a consumer: a defect found there is fixed in `.sdd/templates/` on `main` and brought in with `/sdd-update-framework --from ../../..`. The first sandbox is `finance`.
 
 ## Commits
 
