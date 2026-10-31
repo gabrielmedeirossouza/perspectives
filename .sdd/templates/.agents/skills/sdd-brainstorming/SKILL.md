@@ -1,70 +1,31 @@
 ---
 name: sdd-brainstorming
-description: >-
-  Refines one or more ideas against the current architecture and the specs
-  in specs/ — framing, holes, conflicts, integration — questioning
-  the user on every decision, and optionally materializes the result in
-  .sdd/brainstorming/<name>.md for /sdd-spec and /sdd-prototype. Use when the user
-  wants to discuss, refine, or stress-test an idea or feature before it
-  becomes a spec, or types /sdd-brainstorming.
+description: Refine ideas against existing specs and architecture before specification or prototyping. Optionally save a draft in .sdd/brainstorming/ for /sdd-spec and /sdd-prototype.
 ---
 
 # sdd-brainstorming
 
-Reach `specs/AGENTS.md`, `specs/PERSPECTIVES.md`, and `src/AGENTS.md` before framing the idea. Spec law, scope, and postulates live in the first; the perspectives of this product in the second; the technical spec law, the source tree, and the implementation postulates in the third. The working-file law of `.sdd/` is in the root `AGENTS.md`.
+Read `specs/AGENTS.md`, its perspective catalog and relevant perspective laws, `src/AGENTS.md`, and the root **Working files** and **Interviews**.
 
-A brainstorm is a draft, not a rule. It never overrides `specs/`; it prepares the request `/sdd-spec` writes and the idea `/sdd-prototype` tries.
+## Input
 
-## User Input
+`$ARGUMENTS`: `[<name>:]<idea>` or an existing brainstorm's `<name>`.
 
-```text
-$ARGUMENTS
-```
+Load a matching file under `.sdd/brainstorming/`; otherwise treat the argument as a new idea. Without an argument, ask for the idea and stop.
 
-## Arguments
+## Procedure
 
-```text
-<arg> ::= [<name>:]<idea> | <name>
-<name> ::= lower kebab-case name of a brainstorm in .sdd/brainstorming/
-<idea> ::= the idea or ideas to refine
-```
-
-Examples: `/sdd-brainstorming invite links that expire`; `/sdd-brainstorming invite-expiry:add a grace period`; `/sdd-brainstorming invite-expiry`.
-
-A bare `<name>` that matches `.sdd/brainstorming/<name>.md` loads that brainstorm and refines it. `<name>:<idea>` refines it with the new idea. Otherwise the argument is a new idea. **No argument = stop.** Ask for the idea.
-
-## Steps
-
-**Done when:** every hole found is decided or listed under `Open questions`; the user has decided whether to materialize; if yes, the file is written to **Shape**.
-
-1. **Reach** both `AGENTS.md` files, the nested `AGENTS.md` of every perspective the idea touches, `CONTEXT.md`, and `TODO.md`. Load the brainstorm when `<name>` names one.
-2. **Discover** in the repo: specs under `specs/`, technical specs under `src/specs/`, code under `src/`, package manifests, and the other files in `.sdd/brainstorming/` (overlap). Facts are not questions. Decisions are the user's.
-3. **Frame** the idea: problem, goal, non-goals. Several ideas → frame each, then name how they relate.
-4. **Challenge** until shared understanding. One question at a time, with a recommendation. Walk every branch; if an answer opens a new one, follow it. Hunt for:
-   - flow holes and undefined real paths;
-   - omitted exceptions, limits, and failure cases;
-   - conflict with an existing rule — cite its title and path;
-   - conflict with a `CONTEXT.md` term;
-   - overlap with a `TODO.md` item or another brainstorm;
-   - fit with the current architecture and stack.
-5. **Map** the integration: which perspectives, features, global rules, and technical specs the idea touches; the atomic candidate items, each with a preliminary owner — `perspective/feature` or `perspective` for a product item, by the scope test of that perspective's `AGENTS.md`; `src/specs/<name>` for a technical item, by **Technical spec** of `src/AGENTS.md`.
-6. **Offer:** summarize, then ask "Shall I materialize this brainstorm in `.sdd/brainstorming/<name>.md`?". No → stop without writing.
-7. **Write** to **Shape**. Name: the idea's name in lower kebab-case ASCII, diacritics stripped. A file of that name holding another idea → ask: overwrite, merge, or another name.
-8. **Report:** path written, open questions left, and next steps (`/sdd-prototype <name>`, `/sdd-spec brainstorming:<name>`, then `/sdd-design` for the technical items).
-
-### Interview
-
-```markdown
-**Question:** [one decision]
-**Recommendation:** [option + why + cost of the alternative]
-**Context:** [fact already found, if any]
-```
-
-Conflict with a rule: name the title, the path, the clash, and the recommended resolution. Glossary conflict: point at the `CONTEXT.md` entry and the intended wording.
+1. Read relevant specs, code, manifests, `CONTEXT.md`, `TODO.md`, and overlapping brainstorms.
+2. Frame each idea's problem, goal, and non-goals; explain relationships when several ideas are involved.
+3. Interview about undefined flows, failures, exceptions, limits, conflicts, and architectural fit.
+4. Map affected rules and atomic candidate items to their owners: `<perspective>/<feature>`, `<perspective>` for a global rule, or `src/specs/<name>`.
+5. Summarize and ask: “Shall I materialize this brainstorm in `.sdd/brainstorming/<name>.md`?” Declined → stop without writing.
+6. Write the shape below. Use an ASCII lower-kebab-case name, stripping diacritics; if the name holds another idea, ask whether to overwrite, merge, or rename.
+7. Report the path, unresolved questions, and next steps: `/sdd-prototype <name>`, `/sdd-spec brainstorming:<name>`, then `/sdd-design`.
 
 ## Shape
 
-The file is written in the language of the conversation. Rule titles, `CONTEXT.md` terms, and paths are quoted verbatim. Omit empty sections.
+Use the conversation's language; preserve quoted rule titles, glossary terms, and paths. Omit empty sections.
 
 ```markdown
 # <Idea name>
@@ -75,17 +36,17 @@ The file is written in the language of the conversation. Rule titles, `CONTEXT.m
 ## Goal
 ## Non-goals
 ## Decisions
-- <decision> — why: <reason>; rejected: <alternative and its cost>
+- <accepted decision> — why: <reason>; rejected: <alternative and cost>
 ## Flows
 ## Edge cases
 ## Integration
-- **<Rule title>** (`specs/<perspective>/<feature>/spec.md`): <how it is touched; conflict and resolution>
+- **<Rule title>** (`<spec path>`): <effect; conflict and resolution>
 ## Candidate items
-- <atomic item> — `<perspective>/<feature>` or `src/specs/<name>`
+- <atomic item> — `<owner>`
 ## Glossary candidates
 ## Open questions
 ```
 
-`Decisions` holds only what the user decided. A recommendation the user did not accept is not a decision; it stays an open question.
+Only user decisions enter Decisions; unaccepted recommendations remain open questions. Completion means every discovered hole is decided or recorded and the user has chosen whether to save.
 
-Permissions: create, edit, and delete files under `.sdd/brainstorming/`. Out of scope: spec files under `specs/` and `src/specs/`, `*.metadata.json`, `CONTEXT.md`, `TODO.md`, code under `src/`. Product specs are `/sdd-spec`, technical specs `/sdd-design`; code is `/sdd-implement` or `/sdd-prototype`.
+Permissions: brainstorm files only.

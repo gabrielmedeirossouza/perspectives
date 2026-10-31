@@ -1,86 +1,65 @@
 ---
 name: sdd-commit
-description: >-
-  Reads the working tree changes, groups them into atomic Conventional Commits
-  whose types map to SemVer impact, commits them, and pushes the current
-  branch. Use when the user wants to commit and push the current work, or
-  types /sdd-commit.
+description: Group working-tree changes into atomic Conventional Commits and push the current branch. Use when the user asks to commit and push or invokes /sdd-commit.
 ---
 
 # sdd-commit
 
-Reach `git status` and the diffs before writing any message. The message is derived from what the diff does, never from file names alone or from the session's narrative.
+Invocation authorizes commits and push; do not ask again.
 
-Invoking `/sdd-commit` authorizes the commits and the push of the current branch. Do not ask again.
+## Input
 
-## User Input
+`$ARGUMENTS` is an optional intent hint. Messages, types, and scopes describe what the diff does, never file names alone or the session's narrative. Without a hint, include all working-tree changes.
 
-```text
-$ARGUMENTS
-```
+## Procedure
 
-## Arguments
+1. Read branch, status, staged/unstaged diffs, untracked contents, and the last 20 commit headers.
+2. Stop and report on no changes, detached HEAD, `prototype/*`, an active merge/rebase/cherry-pick, conflict markers, or exposed secrets, including unignored `.env`, `*.env`, key, or token files.
+3. Group by logical change, one type per commit, each file in one group. Mixed files follow their main change. Apply **Metadata grouping**; order dependencies first.
+4. Stage each group's explicit paths, including deletions: `git add -- <paths>`. Commit with **Message**. Hook-staged files are expected under the repository's law. A failing hook stops the run with a report.
+5. Push with `git push`, or `git push -u origin <branch>` without an upstream. Rejection stops the run with a report; do not pull, rebase, or merge.
+6. Report branch, commit hashes/headers, push result, and the highest SemVer impact.
 
-```text
-<arg> ::= [<hint>]
-<hint> ::= free text about the intent of the changes
-```
+Never use broad staging, amend, hook bypass, force push, tags, manual version bumps, changelogs, pull requests, or history rewriting. Completion requires all changes committed and the branch pushed.
 
-Examples: `/sdd-commit`; `/sdd-commit remove review skills and TDD`. The hint informs the messages; the diff still decides type and scope. No argument = commit every change in the working tree.
+## Metadata grouping
 
-## Steps
-
-**Done when:** every change in the working tree is in exactly one commit; every message follows **Message**; the current branch is pushed; the user has the report.
-
-1. **Read** the state: `git branch --show-current`, `git status --porcelain`, `git diff`, `git diff --staged`, untracked file contents, and `git log --oneline -n 20`.
-2. **Stop** and report when: there is nothing to commit; HEAD is detached; the current branch is `prototype/*` (prototypes stay local; `/sdd-prototype` commits them); a merge, rebase, or cherry-pick is in progress; a file has conflict markers; a file carries a secret or matches an ignored-secret pattern (`.env`, `*.env`, keys, tokens) without being ignored.
-3. **Group** the changes into atomic commits: one logical change per commit, one type per commit. A file belongs to one commit; a file with mixed changes goes with its main change. A `*.metadata.json` whose own hash moved goes with the content it hashes; a sync that changed only its recorded sources is a commit of its own, `docs(<scope>): acknowledge <source>`; an approval or a `sources` edit of `/sdd-audit` is a commit of its own, `docs(<scope>): audit sources`; a `files` edit that links or unlinks a file — by `/sdd-audit` or by `/sdd-implement` — moves the hash without moving content and is a commit of its own too, unless a linked file changed with it, when it goes with that file; a `*.metadata.json` never committed travels whole with its content. Order the commits so none depends on a file a later commit adds.
-4. **Classify** each group by **Type** and name its scope.
-5. **Commit** each group in order: `git add -- <paths>` with explicit paths (deletions included), then `git commit -m "<header>" -m "<body>"`. Never `git add -A`, `git add .`, `--amend`, or `--no-verify`. The pre-commit hook may stage files of its own — in a project, the `*.metadata.json` of the nodes in the group; in another repository, what its root `AGENTS.md` says — and that is expected. A failing hook → stop and report; do not bypass it.
-6. **Push** the current branch: `git push` when it has an upstream, otherwise `git push -u origin <branch>`. Never `--force` or `--force-with-lease`. A rejected push → stop and report; do not pull, rebase, or merge.
-7. **Report**: branch, each commit (short hash and header), push result, and the SemVer impact of the set — the highest of its commits.
-
-Out of scope: version tags, version-file bumps, changelogs, pull requests, history rewriting.
+| Change | Commit |
+|--------|--------|
+| Node hash changes with content | With that content |
+| Sync changes only recorded sources | Separate `docs(<scope>): acknowledge <source>` |
+| Approval or source-list edit | Separate `docs(<scope>): audit sources` |
+| File links change without linked content changes | Separate docs commit, including the resulting hash |
+| Previously uncommitted metadata | Whole file with its content |
 
 ## Type
 
-[Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/). The type sets the SemVer impact.
+Conventional Commits 1.0.0; repository-specific scopes come from root law.
 
-| Type | When the group | SemVer |
-|------|----------------|--------|
-| `feat` | adds observable behavior under `src/` | minor |
-| `fix` | corrects wrong behavior under `src/` | patch |
-| `perf` | makes existing behavior faster without changing it | patch |
-| `refactor` | restructures code without changing behavior | none |
-| `test` | only adds or changes tests | none |
-| `docs` | changes specs under `specs/` or `src/specs/` with their `spec.md.metadata.json`, a code node's `*.metadata.json` in `audited` or `sources` only, or in `files` with the hash that follows, `CONTEXT.md`, `TODO.md`, `AGENTS.md`, brainstorms under `.sdd/brainstorming/`, or other prose | none |
-| `build` | changes dependencies, manifests, or build configuration | none |
-| `ci` | changes CI configuration | none |
-| `chore` | changes agent skills under `.agents/skills/`, tools under `.agents/tools/`, hooks under `.githooks/`, a bootstrap prompt, or other harness tooling | none |
+| Type | Change | SemVer |
+|------|--------|--------|
+| `feat` | New observable code behavior | minor |
+| `fix` | Corrected code behavior | patch |
+| `perf` | Faster existing behavior | patch |
+| `refactor` | Code structure, same behavior | none |
+| `test` | Tests only | none |
+| `docs` | Specs, law, prose, brainstorms, or metadata-only changes | none |
+| `build` | Dependencies, manifests, build configuration | none |
+| `ci` | CI configuration | none |
+| `chore` | Skills, tools, hooks, bootstrap, other harness tooling | none |
 
-A change that breaks a public contract — removed or renamed endpoint, field, export, or setting; incompatible behavior — adds `!` after the type or scope and a `BREAKING CHANGE:` footer. SemVer impact: major, whatever the type.
+A public-contract break adds `!` and a `BREAKING CHANGE:` footer explaining migration; its impact is major regardless of type.
 
 ## Message
 
 ```text
 <type>(<scope>)[!]: <description>
 
-<body>
+<optional body>
 
-[BREAKING CHANGE: <what breaks and how to migrate>]
+[BREAKING CHANGE: <break and migration>]
 ```
 
-- **Scope**: the area of the group — `<perspective>/<feature>` or `<perspective>` for perspective specs, `src/specs/<name>` for a technical spec, the module for code, `skills` for `.agents/skills/`, `tools` for `.agents/tools/`, `hooks` for `.githooks/`, `brainstorming` for `.sdd/brainstorming/`. Omit it when the group spans unrelated areas. The root `AGENTS.md` of a repository may name scopes of its own.
-- **Description**: English, imperative, lowercase start, no final period, header ≤ 72 characters. Says what the change does, not which files moved.
-- **Body**: why the change was made and what it affects, wrapped at 72 columns. Omit it when the header is self-explanatory.
-
-Example, as illustration:
-
-```text
-chore(skills)!: remove review skills and verdict panels
-
-Spec and implementation reviews are no longer part of the flow;
-/sdd-spec and /sdd-implement close without independent judges.
-
-BREAKING CHANGE: /sdd-spec-review and /sdd-implement-review no longer exist.
-```
+- Scope: `<perspective>/<feature>`, `<perspective>`, `src/specs/<name>`, code module, or tooling area (`skills`, `tools`, `hooks`, `brainstorming`). Omit for unrelated areas.
+- Description: English imperative, lowercase start, no final period, header ≤ 72 characters.
+- Body: why and impact, wrapped at 72 columns; omit when the header suffices.

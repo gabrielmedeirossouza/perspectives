@@ -1,43 +1,21 @@
 ---
 name: sdd-prototype
-description: >-
-  Implements a brainstorm from .sdd/brainstorming/ in a sandbox — branch
-  prototype/<name> in a git worktree — without specs, metadata, tests, or
-  quality gates, so an idea can be tried before it becomes a spec; with
-  --discard, removes the prototype entirely: worktree, branch, and every
-  recorded side effect. Use when the user wants to try, prototype, or spike
-  an idea, discard a prototype, or types /sdd-prototype.
+description: Build a disposable brainstorm prototype in a local worktree without specification or quality gates. Use to try an idea or discard its prototype.
 ---
 
 # sdd-prototype
 
-Reach the root `AGENTS.md` for the working-file law of `.sdd/`, then the brainstorm. A prototype is disposable: nothing it writes is a rule, a node, or product code on a real branch.
+Read root **Working files** and the source brainstorm. Invocation authorizes the worktree, branch, and local commits. Discard requires its confirmation below.
 
-Invoking `/sdd-prototype` authorizes the worktree, the branch, and local commits on it. `--discard` still asks once before destroying.
+## Input
 
-## User Input
+`$ARGUMENTS`: `[<name>]` or `--discard [<name>]`; names are lower kebab-case.
 
-```text
-$ARGUMENTS
-```
+Resolve a brainstorm for Build or a manifest for Discard. Use an explicit name; if absent on disk, list candidates and stop. With no name, use the sole candidate or ask which. No candidates → stop, suggesting `/sdd-brainstorming` only for Build.
 
-## Arguments
+## Manifest
 
-```text
-<arg> ::= [<name>] | --discard [<name>]
-<name> ::= lower kebab-case name of a brainstorm or a prototype
-```
-
-Examples: `/sdd-prototype`; `/sdd-prototype invite-expiry`; `/sdd-prototype --discard invite-expiry`.
-
-## Sandbox
-
-```
-.sdd/prototypes/<name>/      # git worktree on branch prototype/<name>
-.sdd/prototypes/<name>.md    # manifest
-```
-
-`.sdd/prototypes/` is git-ignored. The manifest is the only record of the prototype and is self-contained: `--discard` works from it alone, even after `/sdd-spec` deleted the brainstorm.
+`.sdd/prototypes/<name>/` is a worktree on `prototype/<name>`; its sibling `<name>.md` is the self-contained cleanup record. Both are git-ignored.
 
 ```markdown
 # Prototype: <name>
@@ -53,33 +31,22 @@ Examples: `/sdd-prototype`; `/sdd-prototype invite-expiry`; `/sdd-prototype --di
 1. <side effect> — undo: `<command>`
 ```
 
-**Compensation log:** every side effect outside the worktree's tracked content — container, local database, open port, local env file, generated data outside the worktree — is appended with its undo command **before** it is performed. An effect with no undo command is not performed. A global install, or a remote or real resource (cloud, third-party API that creates data), needs the user's approval first.
+Before any effect outside tracked worktree content, append its undo command: containers, databases, ports, local env files, external generated files. No undo → no effect. Global installs and remote/real resources require user approval.
 
 ## Build
 
-**Done when:** the prototype runs in the worktree; its work is committed on `prototype/<name>`; the manifest lists every side effect; the user has the report.
+1. Resume an existing manifest/worktree. Otherwise reject detached HEAD, active merge/rebase/cherry-pick, or an orphan branch. Warn that uncommitted base changes will not enter the prototype.
+2. For a new prototype, write the manifest and run `git worktree add -b prototype/<name> .sdd/prototypes/<name> <base-sha>`.
+3. Implement inside the worktree, reading relevant specs/code for fit. Skip tests, C1–C8, Implementation gate, lint/type-check gates, and hooks. Make it run.
+4. Commit with `git -C .sdd/prototypes/<name> add -A` and `git -C .sdd/prototypes/<name> commit --no-verify -m "chore(prototype): <summary>"`. This bypass is allowed only on `prototype/*`. Never push.
+5. Report worktree, branch, run instructions, simplifications, findings for `/sdd-brainstorming <name>`, and the discard command.
 
-1. **Resolve** the brainstorm in `.sdd/brainstorming/`: `<name>` given → that file, missing → stop and list the available ones; none exists → stop and suggest `/sdd-brainstorming`; one → use it; two or more → ask which.
-2. **Resume** when `.sdd/prototypes/<name>.md` exists: keep iterating in its worktree. Otherwise **create**:
-   - Stop when HEAD is detached, a merge, rebase, or cherry-pick is in progress, or `prototype/<name>` exists with no manifest (orphan — report it).
-   - Warn when the working tree has uncommitted changes: they do not enter the prototype.
-   - Write the manifest, then `git worktree add -b prototype/<name> .sdd/prototypes/<name> <base-sha>`.
-3. **Implement** the brainstorm inside the worktree only. Read the relevant specs and code so the prototype fits the existing stack and layout. Do not apply: `/sdd-spec`, `/sdd-design`, `*.metadata.json`, tests, C1–C8, the Implementation gate, linters or type checks as gates, hooks. Make it run.
-4. **Commit** in the worktree: `git -C .sdd/prototypes/<name> add -A`, then `git -C .sdd/prototypes/<name> commit --no-verify -m "chore(prototype): <summary>"`. `--no-verify` is allowed on `prototype/*` only. Never push.
-5. **Report:** worktree, branch, how to run it, what was faked or simplified, findings that belong in the brainstorm (`/sdd-brainstorming <name>`), and `/sdd-prototype --discard <name>`.
-
-Never edit spec files under `specs/` or `src/specs/`, any `*.metadata.json`, `CONTEXT.md`, `TODO.md`, the brainstorm, or any file outside the worktree except the manifest.
+Completion requires a running, committed prototype with every side effect recorded. Do not edit specs, metadata, glossary, TODO, or brainstorm, even inside the worktree. The manifest is the only permitted write outside it.
 
 ## Discard
 
-`--discard [<name>]`.
-
-**Done when:** the worktree, the branch (local and remote), every effect in the Compensation log, and the manifest are gone; the brainstorm is untouched; the user has the report.
-
-1. **Resolve** the manifest in `.sdd/prototypes/`: `<name>` given → that manifest, missing → stop and list; none → stop; one → use it; two or more → ask which.
-2. **Inventory and confirm once:** uncommitted changes in the worktree, commits ahead of the base, the remote branch if `git ls-remote --heads origin prototype/<name>` finds one, and each Compensation log entry. Discarding is irreversible.
-3. **Leave** the worktree when the session's working directory is inside it.
-4. **Compensate** the log in reverse order. A failing undo → stop and report; keep the manifest so the next `--discard` resumes.
-5. **Remove** git state: `git worktree remove --force .sdd/prototypes/<name>`, `git worktree prune`, `git branch -D prototype/<name>`, and `git push origin --delete prototype/<name>` when the remote branch exists.
-6. **Delete** the manifest.
-7. **Report** what was removed.
+1. From the manifest, inventory uncommitted changes, commits since base, remote branch (check `git ls-remote --heads origin prototype/<name>`), and compensation entries. Show this and confirm once.
+2. Leave the worktree if currently inside it.
+3. Undo logged effects in reverse order. On failure, stop and retain the manifest for resumption.
+4. Remove the worktree with `git worktree remove --force`, prune, delete the local branch with `git branch -D`, and delete the remote branch if present.
+5. Delete the manifest after all cleanup succeeds. Report removals; keep the brainstorm.
