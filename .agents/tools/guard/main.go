@@ -1,17 +1,4 @@
-// guard: is this commit of the framework sound, and which version does it
-// make? It vets and tests the Go module of the templates and this one; then,
-// on main, it increments version in .sdd/templates/.sdd/.sdd-config.json and
-// stages the file, so every commit on main is one framework version.
-//
-// Usage: go run -C .agents/tools ./guard [--check] [--root <dir>]
-//
-//	--check       vet and test only; print the version; never write
-//	--root <dir>  framework root, absolute (default: nearest directory at or
-//	              above the working directory that holds .sdd/templates)
-//
-// Output: `ok <module>` per module, then `version N` (--check, or off main
-// with the branch named) or `version N -> N+1, staged`. Exit 0 when sound; 1
-// when a vet or test fails or the version cannot be bumped; 2 on a usage error.
+// guard: is this framework commit sound, and which version does it make? Flags and output: .agents/tools/AGENTS.md.
 package main
 
 import (
