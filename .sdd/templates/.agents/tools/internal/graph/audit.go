@@ -42,12 +42,7 @@ func auditedOf(n *Node) int {
 
 // AuditOf returns the audit state of code node n.
 func (g *Graph) AuditOf(n *Node) AuditState {
-	s := AuditState{Node: n, Audited: auditedOf(n)}
-	for _, f := range g.findings(n) {
-		if f.blocking {
-			s.Blocked = append(s.Blocked, f.msg)
-		}
-	}
+	s := AuditState{Node: n, Audited: auditedOf(n), Blocked: g.blocking(n)}
 	if u, ok := g.codeUnit(n); ok {
 		s.Unit = u.Reason
 	}
@@ -63,18 +58,6 @@ func (g *Graph) Audits() []AuditState {
 	for _, n := range g.Nodes {
 		if n.Kind == Code {
 			out = append(out, g.AuditOf(n))
-		}
-	}
-	return out
-}
-
-// CodeNodesUnder lists the code nodes at or under a root-relative path, by
-// path: a file node named exactly, or every code node under a directory.
-func (g *Graph) CodeNodesUnder(rel string) []*Node {
-	var out []*Node
-	for _, n := range g.NodesUnder(rel) {
-		if n.Kind == Code {
-			out = append(out, n)
 		}
 	}
 	return out
@@ -117,7 +100,7 @@ type Dossier struct {
 func (g *Graph) Dossier(n *Node) Dossier {
 	d := Dossier{State: g.AuditOf(n), Files: n.Files()}
 	if n.IsDir && n.Meta != nil {
-		d.Links = copyFiles(n.Meta.Files)
+		d.Links = cloneFiles(n.Meta.Files)
 	}
 	listed := map[*Node]bool{}
 	for _, e := range sortedEdges(n.Sources) {
@@ -147,12 +130,10 @@ func (g *Graph) Dossier(n *Node) Dossier {
 		}
 		return a.Node.Rel < b.Node.Rel
 	})
-	served, _ := g.served(n)
-	for _, p := range d.Perspectives {
-		if _, ok := served[p]; !ok {
-			d.DropPerspectives = append(d.DropPerspectives, fmt.Sprintf("`%s` (none of its technical specs serves it)", p.Rel))
-		}
+	for _, p := range g.unserved(n) {
+		d.DropPerspectives = append(d.DropPerspectives, fmt.Sprintf("`%s` (none of its technical specs serves it)", p.Rel))
 	}
+	sort.Strings(d.DropPerspectives)
 	return d
 }
 

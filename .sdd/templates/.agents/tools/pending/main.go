@@ -1,63 +1,9 @@
-// pending: what work is pending, for whom — the specs /sdd-design owes, the code
-// /sdd-implement owes, the next /sdd-implement continue batch, and the code nodes
-// /sdd-audit owes, with the dossier a judge needs.
-//
-// Usage: go run -C .agents/tools ./pending [--batch | --audit [--all] [node|dir...]] [--root <dir>]
-//
-//	--batch       print only the next batch (or what /sdd-design owes when nothing
-//	              can be implemented) and the drift
-//	--audit       print the dossier of every code node that owes an audit — or
-//	              of the code nodes at or under each target — grouped by
-//	              directory, and the drift
-//	--all         with --audit, also the nodes already approved or parked
-//	--root <dir>  repository root, absolute (default: nearest directory at or
-//	              above the working directory with .sdd/.sdd-config.json)
-//
-// Output, plain text:
-//
-//	# Design      perspective specs no technical spec serves; technical specs
-//	              stale against a source, with the rules that changed and the
-//	              ## Spec gap that parks one; dangling sources of technical
-//	              specs, with the rules recorded for them
-//	# Implement   the backlog, sources first: technical specs with no code node,
-//	              and directories with code nodes stale against a source, holding
-//	              a dangling one, or missing a perspective node their technical
-//	              specs serve — each with the union of its rules (new, changed,
-//	              removed, renamed; park when a ## Design gap holds it) and
-//	              whether it runs or waits
-//	# Next batch  the units /sdd-implement continue runs now, at most 5, then the
-//	              units that wait and why
-//	# Audit       code nodes with no approval at their current content: owed
-//	              to /sdd-audit, blocked by drift, after /sdd-implement, or parked
-//	              under ## Audit gap. With --audit, the targeted nodes grouped by
-//	              directory — one judge per directory — the standing of each
-//	              node not judged, and one dossier per node judged: its file or
-//	              the files it links with their specs, listed technical and
-//	              perspective specs, candidate technical specs not listed
-//	              (naming the node, global, the rest), and the perspective
-//	              corrections that follow
-//	# Drift       metadata that does not match its content, missing or orphan
-//	              metadata, a metadata file that is no node, invalid sources, a
-//	              bad link of a directory node, a code node with no technical
-//	              spec, files under the specs root or the code root in no node,
-//	              duplicate titles, cycles, gaps in TODO.md that match no rule
-//	              or node
-//
-// With no # Design and no # Implement it prints "Nothing stale, dangling, or
-// unconsumed." before the audit and the drift, and "No pending work." when
-// those are empty too. Exit 0 with the answer; non-zero with the reason on
-// stderr.
-//
-// It implements **Continue** of .agents/skills/sdd-implement/SKILL.md and
-// **Inventory** of .agents/skills/sdd-audit/SKILL.md over the states of
-// **Metadata** in the root AGENTS.md; they win over it.
+// pending: what work is pending, and for whom? Flags and output: .agents/tools/AGENTS.md.
 package main
 
 import (
 	"fmt"
 	"os"
-	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -119,28 +65,13 @@ func main() {
 // node when none is given.
 func codeNodes(g *graph.Graph, dirs []string) ([]*graph.Node, error) {
 	if len(dirs) == 0 {
-		return g.CodeNodesUnder(g.Paths.Src), nil
+		return g.CodeNodes(g.Paths.Src), nil
 	}
 	seen := map[*graph.Node]bool{}
 	var out []*graph.Node
 	for _, d := range dirs {
-		if filepath.IsAbs(d) {
-			d = repo.Rel(g.Root, d)
-		}
-		rel := repo.Clean(d)
-		var nodes []*graph.Node
-		switch base := path.Base(rel); {
-		case base == meta.FileName:
-			if n := g.Node(path.Dir(rel)); n != nil && n.IsDir {
-				nodes = []*graph.Node{n}
-			}
-		case strings.HasSuffix(base, meta.Suffix):
-			if n := g.Node(strings.TrimSuffix(rel, meta.Suffix)); n != nil && n.Kind == graph.Code {
-				nodes = []*graph.Node{n}
-			}
-		default:
-			nodes = g.CodeNodesUnder(rel)
-		}
+		rel := repo.Target(g.Root, d)
+		nodes := g.CodeNodes(rel)
 		if len(nodes) == 0 {
 			return nil, fmt.Errorf("no code node at or under `%s`", rel)
 		}
@@ -185,11 +116,21 @@ func render(g *graph.Graph, batchOnly bool) string {
 		run, wait := g.Batch(cap)
 		if len(run) > 0 {
 			out = append(out, fmt.Sprintf("# Next batch: %d unit%s", len(run), plural(len(run))), "")
-			out = append(out, list(run)...)
+			if batchOnly {
+				out = append(out, list(run)...)
+			} else {
+				for _, u := range run {
+					out = append(out, fmt.Sprintf("- `%s`", u.Rel()))
+				}
+			}
 		} else {
-			out = append(out, "# Next batch: none", "", "Every unit waits:")
+			waits := "Every unit waits."
+			if batchOnly {
+				waits = "Every unit waits:"
+			}
+			out = append(out, "# Next batch: none", "", waits)
 		}
-		if len(wait) > 0 {
+		if batchOnly && len(wait) > 0 {
 			if len(run) > 0 {
 				out = append(out, "", "Waiting:")
 			}
@@ -326,7 +267,7 @@ func dossier(d graph.Dossier) []string {
 	for _, t := range d.Technical {
 		line := "`" + t.Rel + "`"
 		if len(t.Order) > 0 {
-			line += ": " + quoted(t.Order)
+			line += ": " + meta.Quoted(t.Order)
 		}
 		tech = append(tech, line)
 	}
@@ -369,14 +310,6 @@ func bullets(items []string) []string {
 		out[i] = "- " + s
 	}
 	return out
-}
-
-func quoted(titles []string) string {
-	q := make([]string, len(titles))
-	for i, t := range titles {
-		q[i] = fmt.Sprintf("%q", t)
-	}
-	return strings.Join(q, ", ")
 }
 
 // list renders units numbered, each with its rules: run, wait, or park per

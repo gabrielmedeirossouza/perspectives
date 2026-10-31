@@ -4,71 +4,41 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
-	"path"
 	"strings"
 	"time"
 
 	"tools/internal/meta"
 )
 
-// Refresh returns n's metadata with the current hash and rules; modified moves
-// only when the hash differs from the recorded one. Sources and files stay as
-// recorded. On a code node, audited keeps its count while the hash is the
-// recorded one and returns to 0 when the hash moved; other kinds carry no
-// audited. An orphan metadata, a spec node that is not spec.md, a technical
-// spec without its skeleton, and a directory node with a bad link are
-// refused: they are fixed by hand, not refreshed.
+// Refresh computes tool-owned fields without changing sources or file links.
+// It refuses blocking drift that only a hand repair fixes.
 func Refresh(n *Node, now time.Time) (*meta.Metadata, error) {
-	if msg := malformed(n); msg != "" {
-		return nil, errors.New(msg)
-	}
-	if !n.HasMeta && n.Kind == Technical {
-		return nil, fmt.Errorf("`%s` has no %s; write its skeleton `{\"version\": %d, \"sources\": [...]}` (/sdd-design)", n.Rel, path.Base(n.MetaRel), meta.Version)
-	}
-	if n.MetaErr != nil {
-		return nil, fmt.Errorf("`%s`: %v", n.MetaRel, n.MetaErr)
-	}
-	if n.RuleErr != nil {
-		return nil, fmt.Errorf("`%s`: %v", n.Rel, n.RuleErr)
-	}
-	for _, f := range n.linkErrs {
-		if f.blocking {
+	for _, f := range selfFindings(n) {
+		if f.blocking && !f.written {
 			return nil, errors.New(f.msg)
 		}
-	}
-	if n.Meta != nil && !n.IsDir && len(n.Meta.Files) > 0 {
-		return nil, fmt.Errorf("`%s` carries files, which only a directory node has; drop it", n.MetaRel)
 	}
 	m := &meta.Metadata{Version: meta.Version, Algorithm: meta.Algorithm, Hash: n.Hash, Rules: n.Rules}
 	if n.Meta != nil {
 		m.Modified = n.Meta.Modified
 		m.Sources = make([]meta.Source, len(n.Meta.Sources))
 		copy(m.Sources, n.Meta.Sources)
-		m.Files = copyFiles(n.Meta.Files)
+		m.Files = cloneFiles(n.Meta.Files)
 	}
 	if n.Meta == nil || n.Meta.Hash != n.Hash || m.Modified == "" {
 		m.Modified = meta.Stamp(now)
 	}
 	if n.Kind == Code {
-		audited := 0
-		if n.Meta != nil && n.Meta.Hash == n.Hash && n.Meta.Audited != nil {
-			audited = *n.Meta.Audited
-		}
+		audited := auditedOf(n)
 		m.Audited = &audited
 	}
 	return m, nil
 }
 
-// Sync is Refresh plus the current hash and rules of every source. It refuses
-// a spec with a link of its own that names nothing (its writer syncs it only
-// once the link is fixed), a dangling or invalid source, a source whose
-// content or metadata is not what it claims — a broken link of a source is
-// its writer's drift and refuses nothing here — a code
-// node that lists no technical spec, a code node whose sources do not match
-// the perspective nodes its technical specs serve, and a code node that waits
-// on /sdd-design. Recording a source listed since the last sync returns audited
-// to 0: no judge has seen that edge.
+// Sync refreshes and records source versions after dependency validation.
+// Newly recorded edges invalidate the audit of the previous source list.
 func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 	m, err := Refresh(n, now)
 	if err != nil {
@@ -83,14 +53,15 @@ func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 			return nil, fmt.Errorf("`%s` lists `%s`, which is no node%s; drop it from sources", n.Rel, e.Source.Path, g.hint(e.Source.Path))
 		case !e.Valid():
 			return nil, fmt.Errorf("`%s` (%s) lists `%s` (%s); %s", n.Rel, n.Kind, e.To.Rel, e.To.Kind, allowed(n.Kind))
-		case len(g.blocking(e.To)) > 0:
-			return nil, fmt.Errorf("`%s` has drift; fix it first: %s", e.To.Rel, g.blocking(e.To)[0])
+		}
+		if line := g.driftLine(e.To); line != "" {
+			return nil, fmt.Errorf("%s; fix it first", line)
 		}
 		if e.Source.Hash == "" && m.Audited != nil {
 			*m.Audited = 0
 		}
 		m.Sources[i].Hash = e.To.Hash
-		m.Sources[i].Rules = copyRules(e.To.Rules)
+		m.Sources[i].Rules = maps.Clone(e.To.Rules)
 	}
 	if n.Kind == Code {
 		var problems []string
@@ -101,12 +72,8 @@ func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 			for _, p := range g.missing(n) {
 				problems = append(problems, fmt.Sprintf("`%s` lists `%s` but not `%s`, which it serves; add it to sources", n.Rel, served[p].Rel, p.Rel))
 			}
-			for _, e := range n.Sources {
-				if e.Valid() && e.To.Kind == Perspective {
-					if _, ok := served[e.To]; !ok {
-						problems = append(problems, fmt.Sprintf("`%s` lists `%s`, but none of its technical specs serves it", n.Rel, e.To.Rel))
-					}
-				}
+			for _, p := range g.unserved(n) {
+				problems = append(problems, unservedMsg(n, p))
 			}
 		}
 		if w := g.codeWait(n); w != "" {
@@ -119,15 +86,8 @@ func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 	return m, nil
 }
 
-// Approve is Refresh plus one more approval on audited: a judge confirmed that
-// every technical spec the code node lists governs its code and that no
-// technical spec it obeys is missing. It refuses a node that is no code node,
-// one with drift (a hash that moved since the metadata was last written
-// included), one with a dangling source, and one that is an /sdd-implement unit —
-// stale against a source or missing a served perspective — so an approval is
-// recorded only on a node that has no drift and is no unit; the count then
-// persists until the hash moves or a sync records a new source. A node that
-// only waits on /sdd-design is approved.
+// Approve records a judgment only for unchanged, valid code with no pending
+// implementation. Waiting on design alone does not prevent approval.
 func (g *Graph) Approve(n *Node, now time.Time) (*meta.Metadata, error) {
 	if n.Kind != Code {
 		return nil, fmt.Errorf("`%s` is a %s node; only a code node is approved", n.Rel, n.Kind)
@@ -171,18 +131,8 @@ func Save(n *Node, m *meta.Metadata) (bool, error) {
 	return true, os.WriteFile(n.MetaPath, b, 0o644)
 }
 
-func copyRules(r map[string]string) map[string]string {
-	if r == nil {
-		return nil
-	}
-	out := make(map[string]string, len(r))
-	for k, v := range r {
-		out[k] = v
-	}
-	return out
-}
-
-func copyFiles(f map[string][]string) map[string][]string {
+// cloneFiles copies a files map deeply, nil staying nil.
+func cloneFiles(f map[string][]string) map[string][]string {
 	if f == nil {
 		return nil
 	}

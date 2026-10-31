@@ -764,6 +764,33 @@ func TestOwner(t *testing.T) {
 	}
 }
 
+func TestResolve(t *testing.T) {
+	root := fixture(t)
+	settle(t, root)
+	write(t, root, "src/go.mod", "module x\n")
+	write(t, root, "src/.metadata.json", `{"version": 2, "sources": [{"path": "`+T+`"}], "files": {"go.mod": ["`+T+`"]}}`+"\n")
+	g := load(t, root)
+	rels := func(nodes []*Node) string {
+		var out []string
+		for _, n := range nodes {
+			out = append(out, n.Rel)
+		}
+		return strings.Join(out, " ")
+	}
+	for target, want := range map[string]string{
+		C: C, metaOf(C): C, "src/go.mod": "src", "src/.metadata.json": "src",
+		"src/backend": C, "src": "src " + C,
+		"src.metadata.json": "", "src/backend.metadata.json": "", "src/missing": "",
+	} {
+		if got := rels(g.CodeNodes(target)); got != want {
+			t.Errorf("CodeNodes(%s) = %q, want %q", target, got, want)
+		}
+	}
+	if got := rels(g.Resolve("src/specs")); got != I+" "+T {
+		t.Errorf("Resolve(src/specs) = %q", got)
+	}
+}
+
 func TestMissingServedPerspectiveIsAnImplementUnit(t *testing.T) {
 	root := fixture(t)
 	write(t, root, metaOf(C), `{"version": 2, "sources": [{"path": "`+I+`"}, {"path": "`+T+`"}]}`+"\n")
@@ -1095,11 +1122,11 @@ func TestDossierTiersCandidatesAndNamesCorrections(t *testing.T) {
 	if len(d.DropPerspectives) != 1 || d.DropPerspectives[0] != "`specs/user/home/spec.md` (none of its technical specs serves it)" {
 		t.Fatalf("drop = %+v", d.DropPerspectives)
 	}
-	if nodes := g.CodeNodesUnder("src/backend"); len(nodes) != 1 || nodes[0].Rel != C || len(g.CodeNodesUnder("src/specs")) != 0 {
-		t.Fatalf("CodeNodesUnder = %+v", nodes)
+	if nodes := g.CodeNodes("src/backend"); len(nodes) != 1 || nodes[0].Rel != C || len(g.CodeNodes("src/specs")) != 0 {
+		t.Fatalf("CodeNodes = %+v", nodes)
 	}
-	if nodes := g.CodeNodesUnder(C); len(nodes) != 1 || nodes[0].Rel != C || len(g.CodeNodesUnder("src/backend/invite/invite")) != 0 {
-		t.Fatalf("CodeNodesUnder on a file = %+v", nodes)
+	if nodes := g.CodeNodes(C); len(nodes) != 1 || nodes[0].Rel != C || len(g.CodeNodes("src/backend/invite/invite")) != 0 {
+		t.Fatalf("CodeNodes on a file = %+v", nodes)
 	}
 }
 
@@ -1114,8 +1141,8 @@ func TestDossierOfADirectoryNodeCarriesItsLinks(t *testing.T) {
 	if strings.Join(d.Files, ",") != "free.txt,go.mod" || len(d.Links["go.mod"]) != 1 || d.Links["go.mod"][0] != T || len(d.Links["free.txt"]) != 0 {
 		t.Fatalf("dossier = %+v", d)
 	}
-	if nodes := g.CodeNodesUnder("src"); len(nodes) != 2 || nodes[0].Rel != "src" || nodes[1].Rel != C {
-		t.Fatalf("CodeNodesUnder(src) = %+v", nodes)
+	if nodes := g.CodeNodes("src"); len(nodes) != 2 || nodes[0].Rel != "src" || nodes[1].Rel != C {
+		t.Fatalf("CodeNodes(src) = %+v", nodes)
 	}
 }
 

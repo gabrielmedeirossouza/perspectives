@@ -122,10 +122,47 @@ func TestImplementListsDirectoryUnits(t *testing.T) {
 	root := auditFixture(t)
 	write(t, root, P, strings.Replace(pSpec, "\nx\n", "\ny\n", 1))
 	sync(t, root, P, I)
-	out := render(load(t, root), false)
-	want := "# Implement\n\n1. `src/backend/invite/` — invite.ts: stale against `" + P + "`\n   run  Invite expiry — changed (" + P + ")\n\n# Next batch: 1 unit\n\n1. `src/backend/invite/` — invite.ts: stale against `" + P + "`\n   run  Invite expiry — changed (" + P + ")"
-	if !strings.Contains(out, want) {
-		t.Fatalf("output lacks %q:\n%s", want, out)
+	g := load(t, root)
+	for _, batch := range []bool{false, true} {
+		out := render(g, batch)
+		if strings.Count(out, "Invite expiry — changed ("+P+")") != 1 || !strings.Contains(out, "invite.ts: stale against `"+P+"`") {
+			t.Fatalf("batch=%v must describe each rule once:\n%s", batch, out)
+		}
+		marker := map[bool]string{false: "- ", true: "1. "}[batch]
+		if !strings.Contains(out, "# Next batch: 1 unit\n\n"+marker+"`src/backend/invite/`") {
+			t.Fatalf("batch=%v lost the next unit:\n%s", batch, out)
+		}
+		if strings.Contains(out, "# Implement") == batch {
+			t.Fatalf("batch=%v has the wrong backlog view:\n%s", batch, out)
+		}
+	}
+}
+
+func TestBatchKeepsWaitingReasonsWithoutRepeatingTheBacklog(t *testing.T) {
+	root := auditFixture(t)
+	write(t, root, P, strings.Replace(pSpec, "\nx\n", "\ny\n", 1))
+	sync(t, root, P) // invite waits for design
+	write(t, root, T, "# Toolchain\n\n## Place\n\n### Backend placement\n\nUpdated placement.\n")
+	sync(t, root, T) // root manifests can run
+	g := load(t, root)
+	full, batch := render(g, false), render(g, true)
+	if strings.Count(full, "Invite expiry — changed ("+P+")") != 1 || strings.Contains(full, "Waiting:") {
+		t.Fatalf("full view repeated waiting details:\n%s", full)
+	}
+	if !strings.Contains(batch, "# Next batch: 1 unit") || !strings.Contains(batch, "Waiting:\n- `src/backend/invite/`") {
+		t.Fatalf("batch lost runnable or waiting work:\n%s", batch)
+	}
+	if !strings.Contains(full, "# Next batch: 1 unit\n\n- `src/`") {
+		t.Fatalf("full view lost the runnable unit:\n%s", full)
+	}
+	// With the runnable unit synced, both modes still explain why no batch runs.
+	sync(t, root, "src")
+	g = load(t, root)
+	for _, batch := range []bool{false, true} {
+		out := render(g, batch)
+		if !strings.Contains(out, "# Next batch: none") || !strings.Contains(out, "`src/backend/invite/`") || !strings.Contains(out, "stale") {
+			t.Fatalf("batch=%v lost the blocker:\n%s", batch, out)
+		}
 	}
 }
 
@@ -175,6 +212,15 @@ func TestAuditSectionAndDossier(t *testing.T) {
 	}
 	if _, err := codeNodes(g, []string{I + ".metadata.json"}); err == nil {
 		t.Fatal("a technical node's metadata resolved as a code node")
+	}
+	if one, err := codeNodes(g, []string{C, C + ".metadata.json", filepath.Join(root, C)}); err != nil || len(one) != 1 || one[0].Rel != C {
+		t.Fatalf("aliases must select one node: %v %v", one, err)
+	}
+	if nodes, err := codeNodes(g, []string{"src"}); err != nil || len(nodes) != 2 || nodes[0].Rel != "src" || nodes[1].Rel != C {
+		t.Fatalf("directory must select code nodes only: %v %v", nodes, err)
+	}
+	if _, err := codeNodes(g, []string{"src.metadata.json"}); err == nil {
+		t.Fatal("a directory sidecar must not alias its .metadata.json")
 	}
 	approve(t, root, C)
 	g = load(t, root)

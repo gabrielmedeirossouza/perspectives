@@ -1,13 +1,4 @@
-// rules: do the always-active editor rules match UNIVERSAL RULES in the root
-// AGENTS.md? With --format antigravity|cursor, print one generated rule instead.
-//
-// Usage: go run -C .agents/tools ./rules [--format antigravity|cursor] [--root <dir>]
-//
-// --root defaults to the nearest ancestor holding .sdd/.sdd-config.json (a
-// project) or .sdd/templates (the framework). No file is written: redirect
-// --format output to the corresponding rule file when regenerating it.
-// Output: ok <path> per matching rule, or the rule body with --format. Exit 1
-// on a missing or stale rule or an invalid source; 2 on a usage error.
+// rules: do the editor copies match the root UNIVERSAL RULES? Flags and output: .agents/tools/AGENTS.md.
 package main
 
 import (

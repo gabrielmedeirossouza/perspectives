@@ -1,47 +1,4 @@
-// update: what must change in this project to hold framework version M — the
-// files .sdd/templates/ of the framework at M add, change, or remove against
-// the version N the project holds, each mapped to where this project keeps
-// it — and, with --apply, the change itself. A project at version 0 is being
-// bootstrapped: every file is an add.
-//
-// Usage: go run -C .agents/tools ./update [--apply] [--from <dir>] [--root <dir>]
-//
-//	--apply       write: add and update files, merge three ways where both
-//	              sides changed (conflict markers stay in the file), delete
-//	              what the framework removed and the project never touched,
-//	              then record M as the version of .sdd/.sdd-config.json
-//	--from <dir>  a checkout of the framework, relative to the project root:
-//	              its working tree is M and its history holds N (default: a
-//	              clone of the remote of .sdd/.sdd-config.json, removed
-//	              afterwards)
-//	--root <dir>  project root, absolute (default: nearest directory at or
-//	              above the working directory with .sdd/.sdd-config.json;
-//	              inside a framework checkout, pass it)
-//
-// Mapping, from the project's config: specs/<kind>/… goes to
-// <paths.specs>/<name>/… for every perspective whose from is <kind> (none:
-// skipped; perspectives left out: every shipped kind); src/specs/… to
-// <paths.technical>/…; src/… to <paths.src>/…; a skill not in skills is
-// skipped (skills left out: every skill); .sdd/.sdd-config.json is never
-// copied. A from or a skill the framework does not ship is an error. In
-// every .md the tokens src/specs/, specs/, src/, and specs/<kind>/ become
-// the project's; a kind with two perspectives or none leaves its token for
-// the agent, named by hand. The base is the framework at the commit whose
-// config holds version N (the newest at or below N when N is gone, on the
-// branch the checkout has), mapped the same way, so a three-way merge keeps
-// what the project adapted. The config is the one record of what the
-// project keeps: a file it holds no more comes back as an add; a dropped
-// skill or perspective is dropped there. A framework older than N is refused.
-//
-// Output, plain text: `version N -> M` with the source and the base, then
-// one line per file — add, update, merge, conflict, delete, same, skip —
-// with the template path it comes from when that differs, then what the
-// agent writes by hand. Exit 0; 1 when the framework or the base cannot be
-// read, the config names what the framework lacks, or a conflict is left;
-// 2 on a usage error.
-//
-// It implements **Materialize** of TEMP_BOOTSTRAP.md and the steps of
-// .agents/skills/sdd-update-framework/SKILL.md; they win over it.
+// update: what must change for this project to hold the framework's version? Flags and output: .agents/tools/AGENTS.md.
 package main
 
 import (
@@ -52,11 +9,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"tools/internal/config"
+	"tools/internal/meta"
 	"tools/internal/repo"
 )
 
@@ -188,7 +147,7 @@ func plan(root, from string, cfg config.Config) (*planned, error) {
 	m := newMapper(cfg, tplCfg)
 	ourSide := m.project(theirs)
 	baseSide := m.project(base)
-	for _, f := range m.ambiguousFiles() {
+	for _, f := range meta.SortedKeys(m.flagged) {
 		p.byHand = append(p.byHand, "review "+f+": it names a perspective kind that maps to no single perspective of this project")
 	}
 	paths := map[mapped]bool{}
@@ -412,7 +371,7 @@ func newMapper(cfg, tpl config.Config) *mapper {
 // project maps a template tree to project paths, mapping tokens in .md files.
 func (m *mapper) project(t tree) map[mapped]entry {
 	out := map[mapped]entry{}
-	for _, p := range sortedTree(t) {
+	for _, p := range meta.SortedKeys(t) {
 		targets, note := m.paths(p)
 		if note != "" {
 			if !m.seen[p] {
@@ -442,7 +401,7 @@ func (m *mapper) paths(p string) ([]string, string) {
 	if p == config.File {
 		return nil, "the project's own"
 	}
-	if s := skillOf(p); s != "" && len(m.cfg.Skills) > 0 && !contains(m.cfg.Skills, s) {
+	if s := skillOf(p); s != "" && len(m.cfg.Skills) > 0 && !slices.Contains(m.cfg.Skills, s) {
 		return nil, "skill not listed in " + config.File
 	}
 	tp, cp := m.tpl.Paths, m.cfg.Paths
@@ -495,17 +454,6 @@ func (m *mapper) replace(text []byte) []byte {
 	return out
 }
 
-// ambiguousFiles lists the template .md files that name a kind with no
-// single perspective, sorted.
-func (m *mapper) ambiguousFiles() []string {
-	out := make([]string, 0, len(m.flagged))
-	for f := range m.flagged {
-		out = append(out, f)
-	}
-	sort.Strings(out)
-	return out
-}
-
 // known refuses a from the framework does not ship and a skill it does not have.
 func known(cfg, tpl config.Config, theirs tree) error {
 	kinds := map[string]bool{}
@@ -514,7 +462,7 @@ func known(cfg, tpl config.Config, theirs tree) error {
 	}
 	for _, ps := range cfg.Perspectives {
 		if ps.From != "" && !kinds[ps.From] {
-			return fmt.Errorf("perspective %s: from %q is no kind the framework ships (%s)", ps.Name, ps.From, strings.Join(sortedKinds(kinds), ", "))
+			return fmt.Errorf("perspective %s: from %q is no kind the framework ships (%s)", ps.Name, ps.From, strings.Join(meta.SortedKeys(kinds), ", "))
 		}
 	}
 	for _, s := range cfg.Skills {
@@ -523,15 +471,6 @@ func known(cfg, tpl config.Config, theirs tree) error {
 		}
 	}
 	return nil
-}
-
-func sortedKinds(m map[string]bool) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
 }
 
 // skillOf names the skill a template path belongs to, or "".
@@ -552,7 +491,7 @@ func readTemplates(from string) (tree, config.Config, error) {
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		return nil, config.Config{}, errors.New("no " + templates + " under " + from)
 	}
-	out, err := git(from, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", templates)
+	out, err := repo.Git(from, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", templates)
 	if err != nil {
 		return nil, config.Config{}, err
 	}
@@ -599,14 +538,14 @@ func readTemplates(from string) (tree, config.Config, error) {
 // readBase reads .sdd/templates/ at the newest commit of the framework whose
 // config holds version n, or the newest below it, warning in the plan.
 func readBase(from string, n int, p *planned) (tree, string, error) {
-	list, err := git(from, "rev-list", "HEAD", "--", templates+"/"+config.File)
+	list, err := repo.Git(from, "rev-list", "HEAD", "--", templates+"/"+config.File)
 	if err != nil {
 		return nil, "", err
 	}
 	var sha string
 	var v int
 	for _, c := range strings.Fields(list) {
-		raw, err := git(from, "show", c+":"+templates+"/"+config.File)
+		raw, err := repo.Git(from, "show", c+":"+templates+"/"+config.File)
 		if err != nil {
 			continue
 		}
@@ -625,7 +564,7 @@ func readBase(from string, n int, p *planned) (tree, string, error) {
 	if v != n {
 		p.byHand = append(p.byHand, fmt.Sprintf("version %d is not in the framework history; the base is version %d (%s)", n, v, sha[:12]))
 	}
-	out, err := git(from, "ls-tree", "-r", "-z", sha, "--", templates)
+	out, err := repo.Git(from, "ls-tree", "-r", "-z", sha, "--", templates)
 	if err != nil {
 		return nil, "", err
 	}
@@ -642,7 +581,7 @@ func readBase(from string, n int, p *planned) (tree, string, error) {
 		if len(fields) != 3 || fields[1] != "blob" {
 			continue
 		}
-		content, err := git(from, "cat-file", "blob", fields[2])
+		content, err := repo.Git(from, "cat-file", "blob", fields[2])
 		if err != nil {
 			return nil, "", err
 		}
@@ -706,25 +645,6 @@ func merge3(ours, base, theirs []byte) ([]byte, bool, error) {
 	return nil, false, fmt.Errorf("git merge-file: %v %s", err, strings.TrimSpace(errb.String()))
 }
 
-func git(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	var out, errb bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errb
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git %s in %s: %s", args[0], dir, strings.TrimSpace(errb.String()))
-	}
-	return out.String(), nil
-}
-
-func sortedTree(t tree) []string {
-	out := make([]string, 0, len(t))
-	for k := range t {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
 func sortedKeys(m map[mapped]bool) []mapped {
 	out := make([]mapped, 0, len(m))
 	for k := range m {
@@ -737,15 +657,6 @@ func sortedKeys(m map[mapped]bool) []mapped {
 		return out[i].from < out[j].from
 	})
 	return out
-}
-
-func contains(list []string, s string) bool {
-	for _, x := range list {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 func fail(msg string, code int) {

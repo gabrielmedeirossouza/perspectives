@@ -67,7 +67,7 @@ func TestDiff(t *testing.T) {
 	if s := d.String(); s != `added "New"; changed "Changed"; removed "Gone"; renamed "Old name" → "New name"` {
 		t.Fatalf("string = %s", s)
 	}
-	if !Diff(now, now, nil).Empty() || Diff(nil, nil, nil).String() != "no rule changed" {
+	if Diff(now, now, nil).String() != "no rule changed" || Diff(nil, nil, nil).String() != "no rule changed" {
 		t.Fatal("identical maps differ")
 	}
 	if d := Diff(nil, map[string]string{"B": "1", "A": "2"}, nil); !reflect.DeepEqual(d.Added, []string{"A", "B"}) {

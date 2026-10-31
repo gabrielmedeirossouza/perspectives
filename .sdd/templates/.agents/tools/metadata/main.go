@@ -1,58 +1,9 @@
-// metadata: does the metadata of each node reflect its content? It also
-// writes it, records which version of each source a node validated against,
-// and records the approvals of /sdd-audit on a code node.
-//
-// Usage: go run -C .agents/tools ./metadata [--write | --sync | --approve | --staged] [--root <dir>] [node|dir...]
-//
-//	node|dir...   root-relative targets (default: every node; --sync and
-//	              --approve require them). A node is a file path
-//	              (specs/business/invite/spec.md, src/api/auth/db.ts) or the
-//	              path of its metadata file (db.ts.metadata.json,
-//	              src/api/.metadata.json); a directory names its directory
-//	              node, when it has one, and every node at or under it.
-//	              --sync and --approve take one node per target and refuse a
-//	              directory that names several
-//	(no flag)     check: list every drift of the targeted nodes, then the
-//	              files at or under the targets that belong to no node — a
-//	              file in no node, a metadata file that is no node; fail if any
-//	--write       recompute hash and rules; move modified only when the hash
-//	              changed; on a code node, return audited to 0 when the hash
-//	              changed; create spec.md.metadata.json for a spec.md of the
-//	              specs root; never touch sources or files
-//	--sync        --write, then record the current hash and rules of every
-//	              source, returning audited to 0 when a source is recorded for
-//	              the first time; refuses a dangling or invalid source, one
-//	              whose own metadata has drift, a code node with no technical
-//	              spec or whose sources do not match the perspective nodes its
-//	              technical specs serve, and a code node that waits on /sdd-design
-//	--approve     --write, then add one approval to audited: a judge confirmed
-//	              the sources of the code node; refuses a node that is no code
-//	              node, has drift, changed since the judge read it, or is an
-//	              /sdd-implement unit (stale, dangling, missing a served
-//	              perspective)
-//	--staged      --write on every node holding a staged file, then git add
-//	              the metadata of every such node; the pre-commit hook runs
-//	              this. It hashes the working tree, so a partially staged file
-//	              is hashed as it is on disk. A renamed file whose metadata
-//	              did not move with it leaves an orphan, which is refused, as
-//	              is a staged file that belongs to no node
-//	--root <dir>  repository root, absolute (default: nearest directory at or
-//	              above the working directory with .sdd/.sdd-config.json)
-//
-// Output, plain text, one line per node: ok, written, synced, approved (with
-// the count), unchanged, staged, or the drift found. Exit 0 when done; 1 when a check
-// fails or a sync or approval is refused; 2 on a usage error (go run reports
-// every failure as 1).
-//
-// It implements **Metadata** of the root AGENTS.md; that section wins over it.
+// metadata: does each node's metadata match its content? Flags and output: .agents/tools/AGENTS.md.
 package main
 
 import (
 	"fmt"
 	"os"
-	"os/exec"
-	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -76,6 +27,7 @@ func main() {
 	g, err := graph.Load(root)
 	check(err)
 
+	checking := !opts.write && !opts.sync && !opts.approve && !opts.staged
 	var targets []*graph.Node
 	var uncovered []string
 	switch {
@@ -84,14 +36,13 @@ func main() {
 	case len(opts.dirs) == 0:
 		targets = g.Nodes
 	default:
-		targets, err = resolve(g, root, opts.dirs, opts.sync || opts.approve, !opts.write && !opts.sync && !opts.approve)
+		targets, err = resolve(g, root, opts.dirs, opts.sync || opts.approve, checking)
 	}
 	check(err)
 	for _, line := range uncovered {
 		fmt.Fprintf(os.Stderr, "metadata: %s\n", line)
 	}
 	targets = g.SourcesFirst(targets)
-	checking := !opts.write && !opts.sync && !opts.approve && !opts.staged
 	var loose []string
 	if checking {
 		loose = g.Loose(scope(root, opts.dirs))
@@ -157,10 +108,8 @@ func main() {
 		failed = true
 	}
 	if len(stage) > 0 {
-		args := append([]string{"-C", root, "add", "--"}, stage...)
-		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
-			fail(fmt.Sprintf("git add: %s", strings.TrimSpace(string(out))), 1)
-		}
+		_, err := repo.Git(root, append([]string{"add", "--"}, stage...)...)
+		check(err)
 	}
 	if failed {
 		os.Exit(1)
@@ -209,10 +158,8 @@ func parse(args []string) options {
 	return o
 }
 
-// resolve maps root-relative (or absolute) targets to nodes, each once: a
-// node path or its metadata file names one node; a directory names its
-// directory node and every node at or under it — refused when single is
-// set and the directory names more than one.
+// resolve maps targets to nodes (graph.Resolve), each once — refused when
+// single is set and a target names more than one.
 func resolve(g *graph.Graph, root string, targets []string, single, checking bool) ([]*graph.Node, error) {
 	var out []*graph.Node
 	seen := map[*graph.Node]bool{}
@@ -225,29 +172,8 @@ func resolve(g *graph.Graph, root string, targets []string, single, checking boo
 		}
 	}
 	for _, d := range targets {
-		rel := d
-		if filepath.IsAbs(d) {
-			rel = repo.Rel(root, d)
-		}
-		rel = repo.Clean(rel)
-		base := path.Base(rel)
-		var nodes []*graph.Node
-		switch {
-		case base == meta.FileName:
-			if n := g.Node(path.Dir(rel)); n != nil && n.IsDir {
-				nodes = []*graph.Node{n}
-			}
-		case strings.HasSuffix(base, meta.Suffix):
-			if n := g.Node(strings.TrimSuffix(rel, meta.Suffix)); n != nil && !n.IsDir {
-				nodes = []*graph.Node{n}
-			}
-		default:
-			if n := g.Node(rel); n != nil && !n.IsDir {
-				nodes = []*graph.Node{n}
-			} else {
-				nodes = g.NodesUnder(rel)
-			}
-		}
+		rel := repo.Target(root, d)
+		nodes := g.Resolve(rel)
 		if len(nodes) == 0 && checking && len(g.Loose([]string{rel})) > 0 {
 			continue // the check lists its files in no node
 		}
@@ -267,10 +193,7 @@ func resolve(g *graph.Graph, root string, targets []string, single, checking boo
 func scope(root string, targets []string) []string {
 	var out []string
 	for _, d := range targets {
-		if filepath.IsAbs(d) {
-			d = repo.Rel(root, d)
-		}
-		out = append(out, repo.Clean(d))
+		out = append(out, repo.Target(root, d))
 	}
 	return out
 }

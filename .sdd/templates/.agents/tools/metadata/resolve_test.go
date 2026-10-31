@@ -59,7 +59,7 @@ func TestResolveNamesNodesMetadataFilesAndDirectories(t *testing.T) {
 			t.Errorf("resolve(%v) = %q %v, want %q", c.args, rels(nodes), err, c.want)
 		}
 	}
-	for _, bad := range []string{"src/z", "src/x/nope.go", "src/y/.metadata.json", "src/x/a.go/.metadata.json"} {
+	for _, bad := range []string{"src/z", "src/x/nope.go", "src/y/.metadata.json", "src/x/a.go/.metadata.json", "src/x.metadata.json"} {
 		if _, err := resolve(g, root, []string{bad}, false, false); err == nil || !strings.Contains(err.Error(), "is no node") {
 			t.Errorf("resolve(%s) = %v, want an error", bad, err)
 		}

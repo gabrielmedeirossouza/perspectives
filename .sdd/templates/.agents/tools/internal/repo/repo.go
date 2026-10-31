@@ -2,8 +2,11 @@
 package repo
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -50,6 +53,26 @@ func Rel(root, path string) string {
 		return filepath.ToSlash(path)
 	}
 	return filepath.ToSlash(rel)
+}
+
+// Target turns a path a user typed, absolute or root-relative, into a clean
+// root-relative path.
+func Target(root, p string) string {
+	if filepath.IsAbs(p) {
+		p = Rel(root, p)
+	}
+	return Clean(p)
+}
+
+// Git runs git in dir and returns its standard output.
+func Git(dir string, args ...string) (string, error) {
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git %s in %s: %s", args[0], dir, strings.TrimSpace(errb.String()))
+	}
+	return out.String(), nil
 }
 
 // Clean normalizes a root-relative path a user typed: forward slashes, no

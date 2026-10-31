@@ -3,7 +3,6 @@ package graph
 import (
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -13,15 +12,9 @@ import (
 	"tools/internal/meta"
 )
 
-// Gap is one item parked in TODO.md of the specs root under ## Spec gap (a product
-// rule /sdd-design cannot design against), ## Design gap (a rule /sdd-implement
-// cannot implement), or ## Audit gap (code no technical spec governs).
-// Shape: `- **<title>** (`<owner>`) <reason>`, with an optional leading `[ ]`
-// tolerated. A spec or design gap's owner is a spec directory or its spec.md;
-// an audit gap's title names what the missing spec would decide and its owner
-// is a code node (a file, or <dir>/.metadata.json for a directory node), a
-// linked file — which parks the directory node that links it — or a
-// directory, which parks every code node at or under it.
+// Gap is one item of a gap heading in TODO.md of the specs root (**TODO** in
+// specs/AGENTS.md): `- **<title>** (`<owner>`) <reason>`, a leading `[ ]`
+// tolerated.
 type Gap struct {
 	Heading string // "spec", "design", or "audit"
 	Title   string
@@ -83,7 +76,7 @@ func loadGaps(root string, p config.Paths) ([]Gap, []string) {
 // the code nodes the owner parks.
 func (g *Graph) covers(gap *Gap, rel string) bool {
 	if gap.Heading == "audit" {
-		for _, n := range g.auditNodes(gap.Owner) {
+		for _, n := range g.CodeNodes(gap.Owner) {
 			if n.Rel == rel {
 				return true
 			}
@@ -91,35 +84,6 @@ func (g *Graph) covers(gap *Gap, rel string) bool {
 		return false
 	}
 	return gap.Owner == rel || gap.Owner+"/"+meta.SpecFile == rel
-}
-
-// auditNodes lists the code nodes an audit gap's owner parks: the node a
-// file path or a metadata file names, the directory node that links a file,
-// or every code node at or under a directory.
-func (g *Graph) auditNodes(owner string) []*Node {
-	dir, base := path.Dir(owner), path.Base(owner)
-	switch {
-	case base == meta.FileName:
-		if n := g.byRel[dir]; n != nil && n.IsDir {
-			return []*Node{n}
-		}
-		return nil
-	case strings.HasSuffix(base, meta.Suffix):
-		if n := g.byRel[strings.TrimSuffix(owner, meta.Suffix)]; n != nil && n.Kind == Code {
-			return []*Node{n}
-		}
-		return nil
-	}
-	if n := g.byRel[owner]; n != nil && !n.IsDir {
-		if n.Kind == Code {
-			return []*Node{n}
-		}
-		return nil
-	}
-	if d := g.byRel[dir]; d != nil && d.IsDir && d.links(base) {
-		return []*Node{d}
-	}
-	return g.CodeNodesUnder(owner)
 }
 
 // gapsFor returns the gaps of one heading parked on one node.
@@ -182,7 +146,7 @@ func (g *Graph) unmatchedGaps() []string {
 			}
 		case "audit":
 			owed := false
-			for _, n := range g.auditNodes(gap.Owner) {
+			for _, n := range g.CodeNodes(gap.Owner) {
 				if auditedOf(n) == 0 {
 					owed = true
 					break

@@ -148,18 +148,23 @@ func Stamp(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// SameRules reports whether two rule maps hold the same titles and hashes;
-// nil and empty are equal.
-func SameRules(a, b map[string]string) bool {
-	if len(a) != len(b) {
-		return false
+// SortedKeys lists the keys of m, sorted.
+func SortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
 	}
-	for k, v := range a {
-		if b[k] != v {
-			return false
-		}
+	sort.Strings(out)
+	return out
+}
+
+// Quoted renders titles as a comma-separated list of Go-quoted strings.
+func Quoted(titles []string) string {
+	q := make([]string, len(titles))
+	for i, t := range titles {
+		q[i] = fmt.Sprintf("%q", t)
 	}
-	return true
+	return strings.Join(q, ", ")
 }
 
 // Delta is the rule-level difference between the rules recorded at the last
@@ -176,10 +181,7 @@ type Delta struct {
 func Diff(then, now map[string]string, order []string) Delta {
 	var d Delta
 	if order == nil {
-		for t := range now {
-			order = append(order, t)
-		}
-		sort.Strings(order)
+		order = SortedKeys(now)
 	}
 	gone := map[string][]string{} // body hash → recorded titles no longer present
 	for t, h := range then {
@@ -212,24 +214,14 @@ func Diff(then, now map[string]string, order []string) Delta {
 	return d
 }
 
-// Empty reports whether no rule was added, changed, removed, or renamed.
-func (d Delta) Empty() bool {
-	return len(d.Added)+len(d.Changed)+len(d.Removed)+len(d.Renamed) == 0
-}
-
 // String renders `added "A"; changed "B"; removed "C"; renamed "D" → "E"`,
 // or "no rule changed".
 func (d Delta) String() string {
 	var parts []string
 	part := func(label string, titles []string) {
-		if len(titles) == 0 {
-			return
+		if len(titles) > 0 {
+			parts = append(parts, label+" "+Quoted(titles))
 		}
-		q := make([]string, len(titles))
-		for i, t := range titles {
-			q[i] = fmt.Sprintf("%q", t)
-		}
-		parts = append(parts, label+" "+strings.Join(q, ", "))
 	}
 	part("added", d.Added)
 	part("changed", d.Changed)
