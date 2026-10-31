@@ -15,35 +15,33 @@ THE RULES ABOVE ARE NON-NEGOTIABLE.
 
 # SDD framework
 
-This repository is the spec-driven development (SDD) framework as a template. Nothing at this root is a project. A project is made by cloning this repository and following `TEMP_BOOTSTRAP.md`, which materializes `.sdd/templates/` at the project's root, adapted to that product, and deletes itself.
+This repository is the framework template, not a product. A clone becomes a project through `TEMP_BOOTSTRAP.md`; read it only for bootstrap work.
 
 ## Tree
 
-```
-AGENTS.md                 # this file: law of the framework repository
-TEMP_BOOTSTRAP.md         # the prompt a project follows after cloning; not read for framework work
-.githooks/pre-commit      # shim: exec go run -C .agents/tools ./guard — tests the templates, bumps the version on main
-.agents/tools/            # Go module `framework`: guard and a rules symlink to the templates; catalog in its AGENTS.md
-.agents/skills/           # skills of this repository only: sdd-sandbox; sdd-commit is a symlink into the templates
-.claude/skills/           # symlinks to .agents/skills/, as the templates' AGENTS.md says
-.sdd/templates/           # the framework: everything a project receives, laid out as the project will hold it
-.sdd/sandbox/<name>.md    # brief of a sandbox: the product, the bootstrap answers, the decisions its interviews get
-.sdd/sandbox/<name>/      # git worktree on branch sandbox/<name>, ignored
-```
+| Path | Owns |
+|------|------|
+| `.sdd/templates/` | Everything a project receives |
+| `.agents/tools/` | Framework guard and a symlink to the templates' rules tool; catalog in its `AGENTS.md` |
+| `.agents/skills/` | Sandbox skill and a symlink to the templates' commit skill |
+| `.claude/skills/` | Skill symlinks |
+| `.githooks/pre-commit` | Guard entry point |
+| `.sdd/sandbox/<name>.md` | Tracked sandbox brief |
+| `.sdd/sandbox/<name>/` | Ignored worktree on `sandbox/<name>` |
 
 ## Templates
 
-The opening **UNIVERSAL RULES** block of this root `AGENTS.md` is edited only here, never in nested `AGENTS.md` files. `.agents/rules/universal.md` (Antigravity, `trigger: always_on`) and `.cursor/rules/universal.mdc` (Cursor, `alwaysApply: true`) are generated copies with the full text. After editing the block, regenerate each from this root with `go run -C .agents/tools ./rules --format antigravity > .agents/rules/universal.md` and `go run -C .agents/tools ./rules --format cursor > .cursor/rules/universal.mdc`; `go run -C .agents/tools ./rules` checks both. The templates carry the same arrangement for each project.
+Edit project-facing framework files only in `.sdd/templates/`. Read its laws as if it were a repository root: paths in those laws are relative to it. Bootstrap adapts the default layout and perspectives.
 
-`.sdd/templates/` is the framework. Its law is its own `AGENTS.md` and the nested ones, read as if `.sdd/templates/` were a repository root: a path they name, such as `specs/AGENTS.md` or `.agents/tools/`, is relative to it. Edit the framework there and only there. The templates carry the default layout — `specs/`, `src/`, `src/specs/`, the perspectives business, user, and operator — and `TEMP_BOOTSTRAP.md` says what a project adapts.
+Keep this root's UNIVERSAL RULES as its sole editable source. Editor copies and regeneration follow **Harnesses** in the template root law, with commands run from this root; templates retain their own project arrangement.
 
-The templates' `.gitignore` is live for `.sdd/templates/**` in this repository: never add to it a pattern that would hide a template file.
+The templates' `.gitignore` applies live here: never add a pattern hiding template files.
 
-Tests: `go vet ./... && go test ./...` with `-C .sdd/templates/.agents/tools`, and the same with `-C .agents/tools`. The hook runs both before every commit; `go run -C .agents/tools ./guard --check` runs them by hand.
+Validate with `go run -C .agents/tools ./guard --check`. Tool contracts and checks belong to their catalogs.
 
 ## Version
 
-`.sdd/templates/.sdd/.sdd-config.json` holds the framework version: an integer the hook increments on every commit to `main`, so a version names one commit and a project can tell what changed since the version it holds. Never edit it by hand; never commit to `main` with `--no-verify` or `--amend` — the first skips the bump, the second repeats it. Enable the hook once per clone: `git config core.hooksPath .githooks`.
+The hook increments the integer in `.sdd/templates/.sdd/.sdd-config.json` on each main commit, making each version identify one commit. Never edit it manually or commit to main with `--no-verify` or `--amend`. Enable hooks once per clone: `git config core.hooksPath .githooks`.
 
 ## Sandboxes
 
@@ -51,4 +49,4 @@ Tests: `go vet ./... && go test ./...` with `-C .sdd/templates/.agents/tools`, a
 
 ## Commits
 
-`/sdd-commit`, with the types its table gives to the path inside `.sdd/templates/`: `docs` for prose and law, `chore` for skills, tools, hooks, and `TEMP_BOOTSTRAP.md`; scope `templates` for a change a project receives, `tools`, `skills`, or `hooks` for this root. `!` when a project's update will conflict with what it adapted: a renamed path, a removed skill, a changed shape.
+Use `/sdd-commit`; a template path takes the type of the path it becomes in a project, and `TEMP_BOOTSTRAP.md` is bootstrap. Scope `templates` for project-facing changes; `tools`, `skills`, or `hooks` for this root. Use `!` when updates conflict with project adaptations through path renames, removed skills, or changed formats.
