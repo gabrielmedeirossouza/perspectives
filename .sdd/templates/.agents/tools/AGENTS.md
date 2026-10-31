@@ -1,24 +1,59 @@
 # Tools
 
-Procedures agents turned into code: the law of this folder and the catalog of what exists. When to reuse or create a tool is in the root `AGENTS.md`.
+The root `AGENTS.md` defines when to reuse or create a tool.
 
 ## Contract
 
-- Go, standard library only: one module at `.agents/tools/go.mod`, no dependency, no `go.sum` entry, no committed binary. Go 1.22 or newer.
-- One directory per tool: `.agents/tools/<name>/main.go`, `<name>` in lower kebab-case. Code two tools share lives in `.agents/tools/internal/`.
-- Run from the repository root as `go run -C .agents/tools ./<name> [flags]` (`-C` resolves against the working directory: from a subdirectory, give it the path to `.agents/tools` from there). A tool resolves the repository root by walking up from its working directory to the directory that holds `.sdd/.sdd-config.json`; `--root <dir>`, absolute, overrides it. Paths it takes and prints are relative to that root. Where the product specs, the technical specs, and the code live is the `paths` of that file (**Working files** in the root `AGENTS.md`); a tool never hardcodes those roots.
-- Read-only, with two exceptions: `metadata` writes `*.metadata.json` and nothing else; `update --apply` writes the files of the framework and `version` of `.sdd/.sdd-config.json` and nothing else. No other tool writes; the skill that owns a write performs it.
-- `main.go` opens with a comment: the question the tool answers, its flags, and its output.
-- Output is plain text an agent reads as is. Exit 0 with the answer; non-zero with the reason on stderr when it cannot answer (`go run` reports every failure as 1).
-- A tool that implements a rule follows it: where they disagree, the rule wins and the tool is fixed in the same session. A tool that parses a format defined in an `AGENTS.md` changes in the same session as that format.
-- `go vet ./...` and `go test ./...` in `.agents/tools` are green before a tool is committed. Tests sit beside the code they cover, standard `testing` only.
-- Obsolete → delete the directory and its catalog row.
+- Go 1.22+, standard library only, one module in this directory; no dependencies, `go.sum` entries, or committed binaries.
+- One lower-kebab-case directory per tool, with `main.go`; shared code belongs in `internal/`. `main.go` opens with a one-line comment stating the question the tool answers; this catalog owns its flags and output.
+- Run `go run -C .agents/tools ./<tool> [flags]` from the repository root. From elsewhere, adjust `-C`. Tools find the nearest ancestor with `.sdd/.sdd-config.json`; `--root <absolute-dir>` overrides it. Input/output paths are root-relative; configured `paths` replace default roots.
+- Tools report; skills write. Exceptions: `metadata` writes sidecars and stages them with `--staged`; `update --apply` writes framework files and the recorded version.
+- Output is plain text. Exit 0 on success, 1 with a reason on stderr on failure, 2 on a usage error; `go run` collapses failure codes to 1.
+- Rules govern implementations. Fix disagreement in the same session; change parsers alongside their formats.
+- Tests live beside code, using standard `testing`. Run `go vet ./...` and `go test ./...` before committing. Remove obsolete tools with their catalog entries.
 
 ## Catalog
 
-| Tool | Answers | Usage |
-|------|---------|-------|
-| `rules` | Do the always-active Antigravity and Cursor rules match the opening UNIVERSAL RULES block of the root AGENTS.md? `--format` prints one generated rule for the agent to redirect to its file; without it, checks both copies. Read-only | `go run -C .agents/tools ./rules [--format antigravity\|cursor] [--root <dir>]` |
-| `metadata` | Does the metadata of each node match its content, does every markdown link of a spec name, case included, a path git tracks or would track and a heading it holds, and does every file under the roots belong to a node? The check lists the drift of each targeted node, then the files at or under the targets in no node and the metadata files that are no node, and fails on any. It also writes it: `--write` refreshes a node's own hash and rules, `--sync <node…>` also records the current version of its sources, `--approve <node…>` adds one approval of `/sdd-audit` to a code node's `audited`, `--staged` serves the pre-commit hook. A target is a node — its path (`specs/business/invite/spec.md`, `src/api/auth/db.ts`) or its metadata file (`src/api/.metadata.json` for a directory node) — or a directory, which names its directory node and every node at or under it; `--sync` and `--approve` take one node per target. `--staged` also refuses a staged file in no node | `go run -C .agents/tools ./metadata [--write \| --sync \| --approve \| --staged] [node\|dir...] [--root <dir>]` |
-| `pending` | What work is pending, for whom: the specs `/sdd-design` owes, the units `/sdd-implement` owes — one directory with its pending code nodes and the union of their rules, or one technical spec no code node lists — the gaps `TODO.md` parks, the next `/sdd-implement continue` batch, the code nodes `/sdd-audit` owes — with `--audit`, one dossier per node, grouped by directory for one judge each — and the drift | `go run -C .agents/tools ./pending [--batch \| --audit [--all] [node\|dir...]] [--root <dir>]` |
-| `update` | What must change in this project to hold framework version M: the files `.sdd/templates/` of the framework adds, changes, or removes since the version `.sdd/.sdd-config.json` records, each mapped to where this project keeps it by `paths`, `perspectives`, and `skills`; with `--apply`, the change itself — a three-way merge against the base version, conflict markers left in place — and the new version recorded. Version 0 is a bootstrap: every file is an add. The config is the record of what the project keeps: a file removed by hand comes back, a skill or perspective dropped there stays out. `--from <dir>` reads a local checkout of the framework instead of cloning `remote` | `go run -C .agents/tools ./update [--apply] [--from <dir>] [--root <dir>]` |
+Every tool also accepts `--root`.
+
+### `rules [--format antigravity|cursor]`
+
+Do the editor copies match the root UNIVERSAL RULES? Prints `ok <path>` per copy. `--format` prints one generated copy for redirection (**Harnesses** in the root `AGENTS.md`).
+
+### `metadata [--write | --sync | --approve | --staged] [node|dir...]`
+
+Does each node's metadata match its content? Targets follow **Writers** in the root `AGENTS.md`; without targets, the check and `--write` cover every node.
+
+- No flag: lists the targeted nodes' drift, files at or under the targets in no node, and metadata files that are no node.
+- `--write`: recomputes the tool-owned fields, creating perspective sidecars; never touches `sources` or `files`.
+- `--sync <node…>`: `--write`, then records each source's current hash and rules; refusals are in root **Writers**.
+- `--approve <node…>`: `--write`, then adds one approval to `audited`.
+- `--staged`: `--write` on every node holding a staged file, then stages its sidecar; takes no target.
+
+Output: one line per node — `ok`, `written`, `synced`, `approved` with the count, `unchanged` (success), `staged` — or its drift; `no node under …` when none exists.
+
+### `pending [--batch | --audit [--all] [node|dir...]]`
+
+What work is pending, and for whom?
+
+- `# Design`: perspective specs no technical spec serves; stale technical specs with rule deltas and the Spec gap parking one; dangling sources.
+- `# Implement`: units (root **Units**), sources first, with rule deltas, parked rules, and whether each runs or waits.
+- `# Next batch`: the units **Continue** of `/sdd-implement` takes now.
+- `# Audit`: code nodes at 0 approvals with their standing (root **Audit**).
+- `# Drift`: each drift with its owner.
+
+`No pending work.` when every section is empty. `--batch` prints only the next batch in full with waiting units and why — or, when nothing is implementable, what `/sdd-design` owes — then drift. `--audit` groups targeted code nodes by directory: the standing of each not judged, and one dossier per node to judge — its file or linked files with their specs, listed technical and perspective specs, unlisted candidate technical specs in tiers (names the node, global, the rest) with their purposes, and listed perspectives none of its technical specs serves. `--all` adds approved and parked nodes.
+
+### `update [--apply] [--from <dir>]`
+
+What must change for this project to hold the framework's version? `--from` reads a local checkout relative to the project root, its working tree as incoming and its history as base; otherwise a temporary clone of config `remote`.
+
+Mapping, applied alike to base and incoming templates so the merge keeps project adaptations:
+
+- A template in a kind directory of the framework's specs root goes to `<paths.specs>/<name>/` for every perspective whose `from` is that kind, and is skipped when none is; templates under the framework's technical and code roots go to `paths.technical` and `paths.src`; a skill missing from a present `skills` is skipped; the config is never copied.
+- In `.md` files, the framework's root and kind-directory paths become the project's in one pass, longest first. A kind with zero or several perspectives keeps its path, listed `by hand`.
+- A config `from` or skill the framework does not ship is an error.
+
+The base is the source's commit at the recorded version, or the newest below it. Version 0 makes every template an `add`; an older incoming version is refused.
+
+The plan prints `version N -> M` with source and base, one line per file — `add`, `update`, `merge`, `conflict`, `delete`, `skip` — and `by hand` work. `--apply` writes it and records M: `delete` only removes files the project left unchanged; a `conflict` either holds markers or is `kept` unwritten; it exits 1 while a conflict remains.
