@@ -4,4 +4,5 @@ Tools of the framework repository itself. The templates' tools live in `.sdd/tem
 
 | Tool | Answers | Usage |
 |------|---------|-------|
+| `rules` | Do this repository's editor rules match its root UNIVERSAL RULES? Symlink to the templates' tool; `--format` prints a generated copy, otherwise checks both | `go run -C .agents/tools ./rules [--format antigravity\|cursor] [--root <dir>]` |
 | `guard` | Is this commit of the framework sound, and which version does it make? Vets and tests the templates' module and this one; on `main`, increments `version` in `.sdd/templates/.sdd/.sdd-config.json` and stages it. The pre-commit hook runs it; `--check` only tests and prints the version | `go run -C .agents/tools ./guard [--check] [--root <dir>]` |
