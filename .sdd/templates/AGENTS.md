@@ -15,6 +15,8 @@ THE RULES ABOVE ARE NON-NEGOTIABLE AND APPLY TO ALL ARTIFACTS/OUTPUTS/FILES, INC
 
 Product behavior belongs to `specs/` (`specs/AGENTS.md`); technical decisions and code belong to `src/` (`src/AGENTS.md`). Their dependency contract is **Metadata** below.
 
+Read the [code guide](src/specs/code-guide/spec.md) before technical design, implementation, or source audit. It owns coding conventions and examples; other specs cite its rules without restating them.
+
 ## Harnesses
 
 Edit **UNIVERSAL RULES** only in this root file. Regenerate its editor copies from the repository root:

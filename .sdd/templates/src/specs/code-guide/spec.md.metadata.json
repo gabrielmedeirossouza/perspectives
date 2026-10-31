@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "algorithm": "sha256",
+  "hash": "28ece1eb9c91dc399577d9773d63d5f7ff48feeb4d4595c2eb640a563fc16dbe",
+  "modified": "2026-10-31T15:36:43Z",
+  "rules": {
+    "Class behavior": "e132b45d8a0fcf32ec824697d310a850787c268e134ce4a0ab51e94f97926933",
+    "Constructor injection": "222fb141a3e1ff1e5c03b713bcd5d77f601e48ae755a57733a1f2cb2a481e46b",
+    "Consumer-owned abstraction": "7800c346aafbd7c37f06436c44947ee3f193f44b1e5de37fdca0a40a10c756fb",
+    "Local event delivery": "6201f4c29201ebbe5900e2d5bbc2ffca13ad5d3cda9841da3f0ce2d168a98285",
+    "Namespace boundaries": "a5d005d1fa130c8117d62e44175345da7ec574ca7ef4228a76fad07ee0379fec"
+  }
+}

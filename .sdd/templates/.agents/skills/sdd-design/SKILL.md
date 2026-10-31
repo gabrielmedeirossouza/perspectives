@@ -7,8 +7,6 @@ description: Write, change, or remove technical specs in src/specs/. Use for tec
 
 Read **Technical spec** in `src/AGENTS.md`, the spec format and P1–P7 in `specs/AGENTS.md`, and **Metadata** and **Interviews** in the root `AGENTS.md`.
 
-For TypeScript conventions involving EDA, namespaces, classes, DIP, or DI, consult [the technical example](references/typescript-eda.md). Adopt only requested decisions into project specs; the reference is illustrative, never a governing source.
-
 ## Input
 
 `$ARGUMENTS`: `[<name>:]<request>`. The technical spec's name is optional; resolve it from the request.
