@@ -292,11 +292,11 @@ func TestConfigDecidesWhatComesBackAndWhatIsRefused(t *testing.T) {
 			t.Fatalf("%s: accepted", text)
 		}
 	}
-	// A kind with two perspectives leaves its token and names the file.
-	write(t, proj, ".sdd/.sdd-config.json", `{"version": 0, "remote": "r", "perspectives": [{"name": "player", "from": "user"}, {"name": "coach", "from": "user"}]}`+"\n")
+	// A kind with two perspectives leaves its token and names the mapped project file.
+	write(t, proj, ".sdd/.sdd-config.json", `{"version": 0, "remote": "r", "paths": {"specs": "product"}, "perspectives": [{"name": "player", "from": "user"}, {"name": "coach", "from": "user"}]}`+"\n")
 	cfg, _ = config.Load(proj)
 	p, _ = plan(proj, up, cfg)
-	if out := p.render(); !strings.Contains(out, "by hand: review specs/AGENTS.md: it names a perspective kind") {
+	if out := p.render(); !strings.Contains(out, "by hand: review product/AGENTS.md: it names a perspective kind") {
 		t.Fatalf("ambiguous kind not named:\n%s", out)
 	}
 }

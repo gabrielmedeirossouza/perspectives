@@ -25,6 +25,9 @@ func Refresh(n *Node, now time.Time) (*meta.Metadata, error) {
 		m.Modified = n.Meta.Modified
 		m.Sources = make([]meta.Source, len(n.Meta.Sources))
 		copy(m.Sources, n.Meta.Sources)
+		for i := range m.Sources {
+			m.Sources[i].Path = cleanRel(m.Sources[i].Path)
+		}
 		m.Files = cloneFiles(n.Meta.Files)
 	}
 	if n.Meta == nil || n.Meta.Hash != n.Hash || m.Modified == "" {
@@ -43,6 +46,12 @@ func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 	m, err := Refresh(n, now)
 	if err != nil {
 		return nil, err
+	}
+	if g.inCycle[n] {
+		return nil, errors.New(g.cycleMsg())
+	}
+	if n.IsDir && len(n.content) == 0 {
+		return nil, fmt.Errorf("`%s` links no file; a directory node links at least one", n.MetaRel)
 	}
 	if len(n.refErrs) > 0 {
 		return nil, errors.New(strings.Join(n.refErrs, "\n"))
@@ -79,6 +88,16 @@ func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 		if w := g.codeWait(n); w != "" {
 			problems = append(problems, fmt.Sprintf("`%s` waits: %s", n.Rel, w))
 		}
+		if u, ok := g.codeUnit(n); ok {
+			for _, r := range u.Rules {
+				for _, gap := range g.gapsFor("design", r.Source) {
+					if strings.EqualFold(gap.Title, r.Title) {
+						problems = append(problems, fmt.Sprintf("`%s` waits: %q (`%s`) is parked under ## Design gap: %s (/sdd-design)", n.Rel, r.Title, r.Source, gap.Reason))
+						break
+					}
+				}
+			}
+		}
 		if len(problems) > 0 {
 			return nil, errors.New(strings.Join(problems, "\n"))
 		}
@@ -97,6 +116,13 @@ func (g *Graph) Approve(n *Node, now time.Time) (*meta.Metadata, error) {
 	}
 	if d := g.NodeDrift(n); len(d) > 0 {
 		return nil, errors.New(strings.Join(d, "\n"))
+	}
+	if n.IsDir && n.Meta != nil {
+		for _, k := range meta.SortedKeys(n.Meta.Files) {
+			if len(n.Meta.Files[k]) == 0 {
+				return nil, fmt.Errorf("`%s` links `%s` to no spec; every linked file needs a governing technical spec before approval", n.MetaRel, k)
+			}
+		}
 	}
 	if u, ok := g.codeUnit(n); ok {
 		return nil, fmt.Errorf("`%s` is an /sdd-implement unit (%s); approve it once synced", n.Rel, u.Reason)
@@ -138,7 +164,11 @@ func cloneFiles(f map[string][]string) map[string][]string {
 	}
 	out := make(map[string][]string, len(f))
 	for k, v := range f {
-		out[k] = append([]string{}, v...)
+		cp := make([]string, len(v))
+		for i, p := range v {
+			cp[i] = cleanRel(p)
+		}
+		out[k] = cp
 	}
 	return out
 }

@@ -11,7 +11,7 @@ Read `specs/AGENTS.md`, its perspective catalog, and the target perspective's la
 
 `$ARGUMENTS`: `[<perspective-or-feature>:]<request>` or `brainstorming[:<name>]`.
 
-Locate owners from the request; paths are optional. Without an argument, run `go run -C .agents/tools ./pending`, list its Drift entries assigned to `/sdd-spec`, and stop. Never infer a target from an earlier session or branch.
+Locate owners from the request; paths are optional. Without an argument, run `go run -C .agents/tools ./pending` and read `TODO.md` under `specs/`, list Drift entries assigned to `/sdd-spec` plus `Missing spec` and `Spec gap` items, and stop. Never infer a target from an earlier session or branch.
 
 For `brainstorming[:<name>]`, or a request asking to use a brainstorm, resolve one file in `.sdd/brainstorming/`: use the explicit name; if missing, list available files and stop. Without a name, use the sole file, ask when several exist, or suggest `/sdd-brainstorming` when none exists.
 

@@ -58,7 +58,7 @@ func loadGaps(root string, p config.Paths) ([]Gap, []string) {
 				continue
 			}
 			owner := cleanRel(m[2])
-			if !config.Under(owner, p.Src) && !config.Under(owner, p.Technical) && !config.Under(owner, p.Specs) {
+			if heading != "audit" && !config.Under(owner, p.Src) && !config.Under(owner, p.Technical) && !config.Under(owner, p.Specs) {
 				owner = p.Specs + "/" + owner
 			}
 			reason := strings.TrimRight(strings.TrimSpace(m[3]), ".")
@@ -98,23 +98,78 @@ func (g *Graph) gapsFor(heading, rel string) []*Gap {
 }
 
 // park marks the rules of a unit that a ## Design gap item parks; a unit whose
-// every rule is parked waits on /sdd-design.
+// every runnable rule is parked waits on /sdd-design.
 func (g *Graph) park(u Unit) Unit {
-	parked := 0
-	for i, r := range u.Rules {
+	parkRule := func(r *RuleState) bool {
 		for _, gap := range g.gapsFor("design", r.Source) {
 			if strings.EqualFold(gap.Title, r.Title) {
-				u.Rules[i].Parked = gap.Reason
+				r.Parked = gap.Reason
 				gap.matched = true
-				parked++
-				break
+				return true
+			}
+		}
+		return false
+	}
+	parked := 0
+	for i := range u.Rules {
+		if parkRule(&u.Rules[i]) {
+			parked++
+		}
+	}
+	canRun := 0
+	for i := range u.Nodes {
+		unparked := 0
+		for j := range u.Nodes[i].Rules {
+			if !parkRule(&u.Nodes[i].Rules[j]) {
+				unparked++
+			}
+		}
+		if u.Nodes[i].Wait == "" && (len(u.Nodes[i].Rules) == 0 || unparked > 0) {
+			canRun++
+		}
+	}
+	if u.Wait == "" {
+		if len(u.Nodes) > 0 {
+			if canRun == 0 {
+				u.Wait = "every rule is parked under ## Design gap (/sdd-design)"
+			}
+		} else if len(u.Rules) > 0 && parked == len(u.Rules) {
+			u.Wait = "every rule is parked under ## Design gap (/sdd-design)"
+		}
+	}
+	return u
+}
+
+func hasRule(rules map[string]string, title string) bool {
+	for k := range rules {
+		if strings.EqualFold(k, title) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasTitle(titles []string, title string) bool {
+	for _, t := range titles {
+		if strings.EqualFold(t, title) {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *Graph) hasRemovedRule(n *Node, title string) bool {
+	if n == nil || n.Kind != Perspective {
+		return false
+	}
+	for _, t := range g.consumers(n, Technical) {
+		for _, e := range t.Sources {
+			if e.Valid() && e.To == n && hasTitle(e.Delta.Removed, title) {
+				return true
 			}
 		}
 	}
-	if u.Wait == "" && len(u.Rules) > 0 && parked == len(u.Rules) {
-		u.Wait = "every rule is parked under ## Design gap (/sdd-design)"
-	}
-	return u
+	return false
 }
 
 // specNode returns the spec node an owner names: the node itself or the
@@ -141,7 +196,7 @@ func (g *Graph) unmatchedGaps() []string {
 			}
 		case "spec":
 			n := g.specNode(gap.Owner)
-			if n == nil || n.Rules[gap.Title] == "" {
+			if n == nil || n.Kind != Perspective || (!hasRule(n.Rules, gap.Title) && !g.hasRemovedRule(n, gap.Title)) {
 				d = append(d, fmt.Sprintf(todo+": spec gap %q (`%s`) matches no rule", gap.Title, gap.Owner))
 			}
 		case "audit":

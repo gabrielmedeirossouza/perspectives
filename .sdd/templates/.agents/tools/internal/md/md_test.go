@@ -21,9 +21,9 @@ func TestSectionsSkipFencesAndDeepHeadings(t *testing.T) {
 }
 
 func TestFenceClosesOnlyWithSameMarker(t *testing.T) {
-	text := "```\n~~~\n## inside\n```\n## outside\n"
+	text := "```\n~~~\n## inside\n```ts\n## still inside\n```\n## outside\n````md\n```\n### nested fence\n```\n````\n  ### after four-backtick fence ##\n"
 	s := Sections(text)
-	if len(s) != 1 || s[0].Title != "outside" {
+	if len(s) != 2 || s[0].Title != "outside" || s[1].Title != "after four-backtick fence" {
 		t.Fatalf("sections = %+v", s)
 	}
 }
@@ -67,8 +67,8 @@ func TestLinksSkipFencesAndCodeSpans(t *testing.T) {
 		"[web](https://example.com) [self](#own) \\[esc\\](escaped.md) a ` lone [F](f.md)\n" +
 		"[ref]: ../r/spec.md#ref-rule\n" +
 		"[^1]: Balances are shown.\n[Option]: describes x\n\\[not a link](no.md) [ok \\[x\\]](yes.md)\n" +
-		"[a](adj-a.md)[b](adj-b.md) [the [Single use] rule](nested.md) [![img](in.png)](out.md) \\\\[e](after-backslash.md)\n"
-	want := []string{"../a/spec.md#rule-a", "b.md", "pic.png", "c d.md#h", "d.md", "e.md", "https://example.com", "#own", "f.md", "../r/spec.md#ref-rule", "yes.md", "adj-a.md", "adj-b.md", "nested.md", "in.png", "out.md", "after-backslash.md"}
+		"[a](adj-a.md)[b](adj-b.md) [the [Single use] rule](nested.md) [![img](in.png)](out.md) \\\\[e](after-backslash.md) [p](foo(1).md) [empty]() \\`[esc-tick](tick.md)\\` `C:\\dir\\` [win](win.md)\n"
+	want := []string{"../a/spec.md#rule-a", "b.md", "pic.png", "c d.md#h", "d.md", "e.md", "https://example.com", "#own", "f.md", "../r/spec.md#ref-rule", "yes.md", "adj-a.md", "adj-b.md", "nested.md", "in.png", "out.md", "after-backslash.md", "foo(1).md", "", "tick.md", "win.md"}
 	if got := Links(text); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Links = %q, want %q", got, want)
 	}

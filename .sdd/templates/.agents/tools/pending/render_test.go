@@ -288,3 +288,28 @@ func TestNoPendingWorkOnlyWhenNothingIsOwed(t *testing.T) {
 		t.Fatalf("project with drift only:\n%s", out)
 	}
 }
+
+func TestMixedDirectoryUnitMarksWaitingNodeRulesAsWait(t *testing.T) {
+	root := auditFixture(t)
+	const (
+		O  = "specs/business/other/spec.md"
+		TO = "src/specs/other/spec.md"
+		CO = "src/backend/invite/other.ts"
+	)
+	write(t, root, O, "# Other\n\nPurpose.\n\n## S\n\n### Other rule\n\nx\n")
+	write(t, root, TO, "# Other tech\n\nPurpose.\n\n## S\n\n### Tech other\n\nx\n")
+	write(t, root, TO+".metadata.json", `{"version": 2, "sources": [{"path": "`+O+`"}]}`+"\n")
+	write(t, root, CO, "x\n")
+	write(t, root, CO+".metadata.json", `{"version": 2, "sources": [{"path": "`+TO+`"}, {"path": "`+O+`"}]}`+"\n")
+	sync(t, root, O, TO, CO)
+	// Make invite.ts wait on I (by changing P without syncing I) while other.ts can run (by changing TO).
+	write(t, root, P, strings.Replace(pSpec, "\nx\n", "\ny\n", 1))
+	sync(t, root, P)
+	write(t, root, TO, "# Other tech\n\nPurpose.\n\n## S\n\n### Tech other\n\ny\n")
+	sync(t, root, TO)
+	g := load(t, root)
+	out := render(g, false)
+	if !strings.Contains(out, "   wait invite.ts — `"+I+"` is stale against `"+P+"` (/sdd-design)") || !strings.Contains(out, "   wait Invite expiry — changed ("+P+")") || !strings.Contains(out, "   run  Tech other — changed ("+TO+")") {
+		t.Fatalf("mixed directory unit output:\n%s", out)
+	}
+}

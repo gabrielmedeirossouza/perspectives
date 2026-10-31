@@ -25,13 +25,34 @@ type Rule struct {
 }
 
 var (
-	fenceRe   = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})")
-	headingRe = regexp.MustCompile(`^(#{1,3})\s+(.+?)\s*$`)
+	fenceRe   = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})(.*)$")
+	headingRe = regexp.MustCompile(`^ {0,3}(#{1,3})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$`)
 	atxRe     = regexp.MustCompile(`^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$`)
 	setextRe  = regexp.MustCompile(`^ {0,3}(?:=+|-+)[ \t]*$`)
-	targetRe  = regexp.MustCompile(`^\(\s*(<[^>]*>|[^)\s]+)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)`)
+	targetRe  = regexp.MustCompile(`^\(\s*(<[^>]*>|(?:\([^()\s]*\)|[^()\s])*)(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)`)
 	refDefRe  = regexp.MustCompile(`^ {0,3}\[([^\]^][^\]]*)\]:[ \t]*(<[^>]*>|[^\s<]+)[ \t]*(?:"[^"]*"|'[^']*'|\([^)]*\))?[ \t]*$`)
 )
+
+// stepFence advances code-fence state on line (CommonMark): opens with 3+
+// backticks or tildes (no backtick in a backtick info string) and closes only
+// with at least as many of the same character and no info string.
+func stepFence(line string, ch byte, n int) (byte, int, bool) {
+	m := fenceRe.FindStringSubmatch(line)
+	if m == nil {
+		return ch, n, false
+	}
+	mark, rest := m[1], m[2]
+	if ch == 0 {
+		if mark[0] == '`' && strings.ContainsRune(rest, '`') {
+			return 0, 0, false
+		}
+		return mark[0], len(mark), true
+	}
+	if mark[0] == ch && len(mark) >= n && strings.TrimSpace(rest) == "" {
+		return 0, 0, true
+	}
+	return ch, n, false
+}
 
 // Sections returns the headings of level 1–3 outside code fences, in order. A
 // fence opens with three or more backticks or tildes indented at most three
@@ -39,15 +60,10 @@ var (
 func Sections(text string) []Section {
 	var out []Section
 	var fence byte
+	var fenceLen int
 	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
-		if m := fenceRe.FindStringSubmatch(line); m != nil {
-			switch c := m[1][0]; {
-			case fence == 0:
-				fence = c
-			case fence == c:
-				fence = 0
-			}
-		} else if fence == 0 {
+		var boundary bool
+		if fence, fenceLen, boundary = stepFence(line, fence, fenceLen); !boundary && fence == 0 {
 			if m := headingRe.FindStringSubmatch(line); m != nil {
 				out = append(out, Section{Level: len(m[1]), Title: m[2]})
 				continue
@@ -84,14 +100,10 @@ func Rules(text string) []Rule {
 func outsideFences(text string) []string {
 	var out []string
 	var fence byte
+	var fenceLen int
 	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
-		if m := fenceRe.FindStringSubmatch(line); m != nil {
-			switch c := m[1][0]; {
-			case fence == 0:
-				fence = c
-			case fence == c:
-				fence = 0
-			}
+		var boundary bool
+		if fence, fenceLen, boundary = stepFence(line, fence, fenceLen); boundary {
 			out = append(out, "")
 			continue
 		}
@@ -164,7 +176,7 @@ func opening(line string, i int) int {
 func stripCode(line string) string {
 	var b strings.Builder
 	for i := 0; i < len(line); {
-		if line[i] != '`' {
+		if line[i] != '`' || escaped(line, i) {
 			b.WriteByte(line[i])
 			i++
 			continue

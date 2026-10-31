@@ -322,10 +322,15 @@ func list(units []graph.Unit) []string {
 			verb, reason = "wait", u.Reason+" — waits: "+u.Wait
 		}
 		out = append(out, fmt.Sprintf("%d. `%s` — %s", i+1, u.Rel(), reason))
+		runnable := map[[2]string]bool{}
 		if u.Wait == "" {
 			for _, nu := range u.Nodes {
 				if nu.Wait != "" {
 					out = append(out, fmt.Sprintf("   wait %s — %s", nu.Node.Label(), nu.Wait))
+					continue
+				}
+				for _, r := range nu.Rules {
+					runnable[[2]string{r.Source, r.Title}] = true
 				}
 			}
 		}
@@ -334,7 +339,11 @@ func list(units []graph.Unit) []string {
 				out = append(out, fmt.Sprintf("   park %s — %s (%s) — parked: %s", r.Title, r.State, r.Source, r.Parked))
 				continue
 			}
-			out = append(out, fmt.Sprintf("   %s %s — %s (%s)", verb, r.Title, r.State, r.Source))
+			rv := verb
+			if u.Wait == "" && len(u.Nodes) > 0 && !runnable[[2]string{r.Source, r.Title}] {
+				rv = "wait"
+			}
+			out = append(out, fmt.Sprintf("   %s %s — %s (%s)", rv, r.Title, r.State, r.Source))
 		}
 	}
 	return out

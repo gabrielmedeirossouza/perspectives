@@ -1380,3 +1380,175 @@ func TestLinkIntoAFileDeletedButStillTrackedIsBroken(t *testing.T) {
 		t.Fatalf("drift of %s = %v", O, d)
 	}
 }
+
+func TestBrokenLinksCatchEmptyTargetsAndNonMarkdownFragments(t *testing.T) {
+	root := fixture(t)
+	settle(t, root)
+	write(t, root, P, pSpec+"\nSee [empty](), [dir](/src/specs/invite#http), [code](/src/backend/invite/invite.ts#fn), and [case](#Single-use).\n")
+	g := load(t, root)
+	d := g.NodeDrift(g.Node(P))
+	for _, want := range []string{
+		"links ``, which names no path or heading; fix the link (/sdd-spec)",
+		"links `/src/specs/invite#http`, but `src/specs/invite` is no markdown file with `#http` (a source names a spec file: `src/specs/invite/spec.md`); fix the link (/sdd-spec)",
+		"links `/src/backend/invite/invite.ts#fn`, but `src/backend/invite/invite.ts` is no markdown file with `#fn`; fix the link (/sdd-spec)",
+		"links `#Single-use`, but `" + P + "` has no heading `#Single-use`",
+	} {
+		if !has(d, want) {
+			t.Fatalf("drift lacks %q:\n%v", want, d)
+		}
+	}
+}
+
+func TestDuplicateSourcesAndInvalidDirectoryLinksAreBlockingDrift(t *testing.T) {
+	root := fixture(t)
+	settle(t, root)
+	write(t, root, "src/go.mod", "module x\n")
+	write(t, root, "src/.metadata.json", `{"version": 2, "sources": [{"path": "`+I+`"}, {"path": "./`+I+`"}, {"path": "`+P+`"}], "files": {"go.mod": ["`+I+`", "./`+I+`", "`+P+`"]}}`+"\n")
+	g := load(t, root)
+	d := g.NodeDrift(g.Node("src"))
+	for _, want := range []string{
+		"lists `./" + I + "` twice in sources; keep one",
+		"links `go.mod` to `./" + I + "` twice; keep one",
+		"links `go.mod` to `" + P + "`, which is no technical spec",
+	} {
+		if !has(d, want) {
+			t.Fatalf("drift lacks %q:\n%v", want, d)
+		}
+	}
+	if _, err := Refresh(g.Node("src"), time.Now()); err == nil {
+		t.Fatal("Refresh accepted duplicate sources and invalid file links")
+	}
+}
+
+func TestRefreshNormalizesPathsAndSyncAndApproveEnforceDirectoryRules(t *testing.T) {
+	root := fixture(t)
+	settle(t, root)
+	write(t, root, "src/go.mod", "module x\n")
+	write(t, root, "src/free.txt", "x\n")
+	write(t, root, "src/.metadata.json", `{"version": 2, "sources": [{"path": "./`+T+`"}], "files": {"go.mod": ["./`+T+`"], "free.txt": []}}`+"\n")
+	g := sync(t, root, "src")
+	n := g.Node("src")
+	if n.Meta.Sources[0].Path != T || n.Meta.Files["go.mod"][0] != T {
+		t.Fatalf("Refresh did not normalize paths: %+v", n.Meta)
+	}
+	if _, err := g.Approve(n, time.Now()); err == nil || !strings.Contains(err.Error(), "links `free.txt` to no spec") {
+		t.Fatalf("Approve accepted a linked file with no spec: %v", err)
+	}
+	write(t, root, "src/.metadata.json", `{"version": 2, "sources": [{"path": "`+T+`"}], "files": {"go.mod": ["`+T+`"], "free.txt": ["`+T+`"]}}`+"\n")
+	sync(t, root, "src")
+	approve(t, root, "src")
+	// Dropping a file's last spec resets its effective audited count without changing content hash.
+	raw := strings.Replace(string(readFile(t, root, "src/.metadata.json")), `"free.txt": [`+"\n"+`      "`+T+`"`+"\n"+`    ]`, `"free.txt": []`, 1)
+	write(t, root, "src/.metadata.json", raw)
+	g = load(t, root)
+	if s := g.AuditOf(g.Node("src")); s.Audited != 0 || !s.Owed() {
+		t.Fatalf("a linked file with [] specs must owe an audit: %+v", s)
+	}
+	// Empty directory node cannot be synced.
+	write(t, root, "src/backend/.metadata.json", `{"version": 2, "sources": [{"path": "`+T+`"}]}`+"\n")
+	g = load(t, root)
+	if _, err := g.Sync(g.Node("src/backend"), time.Now()); err == nil || !strings.Contains(err.Error(), "links no file") {
+		t.Fatalf("Sync accepted an empty directory node: %v", err)
+	}
+}
+
+func TestCycleIsolatesDownstreamSpecsAndRefusesSync(t *testing.T) {
+	root := fixture(t)
+	const (
+		A = "src/specs/a/spec.md"
+		B = "src/specs/b/spec.md"
+		D = "src/specs/d/spec.md"
+	)
+	for _, s := range []string{A, B, D} {
+		write(t, root, s, "# S\n\nPurpose.\n\n## R\n\n### Rule\n\nx\n")
+	}
+	write(t, root, metaOf(A), `{"version": 2, "sources": [{"path": "`+B+`"}]}`+"\n")
+	write(t, root, metaOf(B), `{"version": 2, "sources": [{"path": "`+A+`"}]}`+"\n")
+	write(t, root, metaOf(D), `{"version": 2, "sources": [{"path": "`+A+`"}]}`+"\n")
+	for _, s := range []string{A, B, D} {
+		g := load(t, root)
+		m, err := Refresh(g.Node(s), time.Unix(0, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		Save(g.Node(s), m)
+	}
+	g := load(t, root)
+	if !has(g.Drift(), "technical specs source each other in a cycle: `"+A+"`, `"+B+"`") || has(g.Drift(), "`"+D+"`") {
+		t.Fatalf("cycle included downstream spec D: %v", g.Drift())
+	}
+	if _, err := g.Sync(g.Node(A), time.Now()); err == nil || !strings.Contains(err.Error(), "cycle") {
+		t.Fatalf("Sync accepted cycle member A: %v", err)
+	}
+	if _, err := g.Sync(g.Node(D), time.Now()); err == nil || !strings.Contains(err.Error(), "cycle") {
+		t.Fatalf("Sync accepted downstream spec D whose source is in a cycle: %v", err)
+	}
+}
+
+func TestSyncRefusesCodeWithParkedDesignGap(t *testing.T) {
+	root := fixture(t)
+	settle(t, root)
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## Tests\n\n### Vitest as test runner\n\nTests **must** run on `vitest`.\n\n### Coverage\n\nCoverage **must** hit 90%.\n")
+	sync(t, root, T)
+	write(t, root, "specs/TODO.md", "# TODO\n\n## Design gap\n\n- **Coverage** (`"+T+"`) runner lacks threshold flag.\n")
+	g := load(t, root)
+	if _, err := g.Sync(g.Node(C), time.Now()); err == nil || !strings.Contains(err.Error(), "parked under ## Design gap") {
+		t.Fatalf("Sync accepted code node with parked rule: %v", err)
+	}
+}
+
+func TestStagedCatchesStrayMetadataAndRemovedDirectoryLinks(t *testing.T) {
+	root := fixture(t)
+	settle(t, root)
+	git := gitIn(t, root)
+	write(t, root, "src/go.mod", "module x\n")
+	write(t, root, "src/.metadata.json", `{"version": 2, "sources": [{"path": "`+T+`"}], "files": {"go.mod": ["`+T+`"]}}`+"\n")
+	sync(t, root, "src")
+	git("add", "-A")
+	git("commit", "-q", "-m", "base")
+
+	write(t, root, "specs/.metadata.json", "{}\n")
+	git("add", "specs/.metadata.json")
+	if got := staged(t, root); !strings.Contains(got, "`specs/.metadata.json` is no node") {
+		t.Fatalf("staged missed stray metadata: %q", got)
+	}
+	git("rm", "-f", "-q", "specs/.metadata.json")
+
+	git("rm", "-q", "src/.metadata.json")
+	if got := staged(t, root); !strings.Contains(got, "`src/go.mod` is in no node") {
+		t.Fatalf("staged missed file uncovered by removing .metadata.json: %q", got)
+	}
+}
+
+func TestTechnicalRootSpecFileIsNoNodeAndRootQueriesMatchAll(t *testing.T) {
+	root := fixture(t)
+	settle(t, root)
+	write(t, root, "src/specs/spec.md", "# Root\n")
+	write(t, root, "src/specs/spec.md.metadata.json", `{"version": 2}`+"\n")
+	g := load(t, root)
+	if g.Node("src/specs/spec.md") != nil {
+		t.Fatal("src/specs/spec.md at the technical root became a node")
+	}
+	if !has(g.Loose([]string{"."}), "`src/specs/spec.md` is in no node") || !has(g.Loose([]string{"."}), "`src/specs/spec.md.metadata.json` is no node") {
+		t.Fatalf("Loose(.) = %v", g.Loose([]string{"."}))
+	}
+	if len(g.NodesUnder(".")) != len(g.Nodes) {
+		t.Fatalf("NodesUnder(.) = %d, want %d", len(g.NodesUnder(".")), len(g.Nodes))
+	}
+}
+
+func TestSpecGapOnSyncedOrUnservedPerspectiveAndOutOfScopePurpose(t *testing.T) {
+	root := fixture(t)
+	settle(t, root)
+	write(t, root, "specs/TODO.md", "# TODO\n\n## Spec gap\n\n- **single use** (`"+P+"`) clarify revocation.\n- **Invite endpoint** (`"+I+"`) technical owner.\n")
+	g := load(t, root)
+	if !has(g.Drift(), `spec gap "Invite endpoint" (`+"`"+I+"`"+`) matches no rule`) || has(g.Drift(), "single use") || !has(g.Design(), "`"+P+"` has a spec gap on \"single use\": clarify revocation (/sdd-spec)") {
+		t.Fatalf("drift=%v design=%v", g.Drift(), g.Design())
+	}
+	if got := purpose("# S\n\n**Out of scope:** billing.\n\n## R\n"); got != "" {
+		t.Fatalf("purpose included Out of scope: %q", got)
+	}
+	if !namesRe("src", "src", "package.json").MatchString("Manifest `/src/package.json` holds scripts.") {
+		t.Fatal("namesRe missed linked file with leading slash")
+	}
+}

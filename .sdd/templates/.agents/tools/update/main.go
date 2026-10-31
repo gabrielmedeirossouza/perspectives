@@ -146,10 +146,10 @@ func plan(root, from string, cfg config.Config) (*planned, error) {
 	}
 	m := newMapper(cfg, tplCfg)
 	ourSide := m.project(theirs)
-	baseSide := m.project(base)
 	for _, f := range meta.SortedKeys(m.flagged) {
 		p.byHand = append(p.byHand, "review "+f+": it names a perspective kind that maps to no single perspective of this project")
 	}
+	baseSide := m.project(base)
 	paths := map[mapped]bool{}
 	for k := range ourSide {
 		paths[k] = true
@@ -384,7 +384,9 @@ func (m *mapper) project(t tree) map[mapped]entry {
 		if strings.HasSuffix(p, ".md") && e.link == "" {
 			for _, tok := range m.loose {
 				if bytes.Contains(e.data, tok) {
-					m.flagged[p] = true
+					for _, target := range targets {
+						m.flagged[target] = true
+					}
 				}
 			}
 			e.data = m.replace(e.data)

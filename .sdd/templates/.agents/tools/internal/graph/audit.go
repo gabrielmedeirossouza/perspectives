@@ -32,10 +32,18 @@ func (s AuditState) Owed() bool {
 }
 
 // auditedOf is the approvals a node holds at its current hash: the recorded
-// count while the hash is the recorded one, 0 otherwise.
+// count while the hash is the recorded one and every file a directory node
+// links has a spec, 0 otherwise.
 func auditedOf(n *Node) int {
 	if n.Meta == nil || n.Meta.Audited == nil || n.Meta.Hash != n.Hash {
 		return 0
+	}
+	if n.IsDir {
+		for _, specs := range n.Meta.Files {
+			if len(specs) == 0 {
+				return 0
+			}
+		}
 	}
 	return *n.Meta.Audited
 }
@@ -104,7 +112,7 @@ func (g *Graph) Dossier(n *Node) Dossier {
 	}
 	listed := map[*Node]bool{}
 	for _, e := range sortedEdges(n.Sources) {
-		if !e.Valid() {
+		if !e.Valid() || listed[e.To] {
 			continue
 		}
 		listed[e.To] = true
@@ -115,7 +123,11 @@ func (g *Graph) Dossier(n *Node) Dossier {
 			d.Perspectives = append(d.Perspectives, e.To)
 		}
 	}
-	names := namesRe(n.Rel, g.Paths.Src)
+	var linked []string
+	if n.IsDir {
+		linked = d.Files
+	}
+	names := namesRe(n.Rel, g.Paths.Src, linked...)
 	for _, t := range g.Nodes {
 		if t.Kind != Technical || listed[t] || !t.HasFile {
 			continue
@@ -150,14 +162,17 @@ func (g *Graph) global(t *Node) bool {
 }
 
 // namesRe matches a mention of the node's path — the file of a file node,
-// the directory of a directory node — or of a parent of it below the code
-// root src, as a whole path token — optionally led by ./ and closed by a
-// slash or a sentence period; a sibling (src/backend/invitee), a file with
-// a longer name (src/backend/invite.ts beside src/backend/invite), or a
-// child path does not count. For the code root itself the token is the root,
-// which most placement rules mention.
-func namesRe(rel, src string) *regexp.Regexp {
+// the directory and linked files of a directory node — or of a parent of it
+// below the code root src, as a whole path token — optionally led by ./ or /
+// and closed by a slash or a sentence period; a sibling (src/backend/invitee),
+// a file with a longer name (src/backend/invite.ts beside src/backend/invite),
+// or a child path does not count. For the code root itself the token is the
+// root, which most placement rules mention.
+func namesRe(rel, src string, files ...string) *regexp.Regexp {
 	var dirs []string
+	for _, f := range files {
+		dirs = append(dirs, regexp.QuoteMeta(rel+"/"+f))
+	}
 	for dir := rel; dir != "." && dir != ""; dir = path.Dir(dir) {
 		dirs = append(dirs, regexp.QuoteMeta(dir))
 		if dir == src {
@@ -167,12 +182,12 @@ func namesRe(rel, src string) *regexp.Regexp {
 	if rel != src {
 		dirs = dirs[:len(dirs)-1] // the code root alone names every code node
 	}
-	return regexp.MustCompile(`(^|[^\w/.-])(?:\./)?(` + strings.Join(dirs, "|") + `)/?(?:[^\w/.-]|\.(?:[^\w]|$)|$)`)
+	return regexp.MustCompile(`(^|[^\w/.-])(?:\.?/)?(` + strings.Join(dirs, "|") + `)/?(?:[^\w/.-]|\.(?:[^\w]|$)|$)`)
 }
 
 // purpose is the first paragraph after the # title of a spec file — its
-// purpose sentence, wrapped lines joined — or empty when a heading or a code
-// fence follows the title.
+// purpose sentence, wrapped lines joined — or empty when a heading, an out-of-
+// scope line, or a code fence follows the title.
 func purpose(text string) string {
 	for _, s := range md.Sections(text) {
 		if s.Level != 1 {
@@ -185,6 +200,8 @@ func purpose(text string) string {
 			case t == "" && len(lines) > 0:
 				return strings.Join(lines, " ")
 			case t == "":
+			case strings.HasPrefix(t, "**Out of scope:**"):
+				return strings.Join(lines, " ")
 			case len(lines) == 0 && (strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~")):
 				return ""
 			default:

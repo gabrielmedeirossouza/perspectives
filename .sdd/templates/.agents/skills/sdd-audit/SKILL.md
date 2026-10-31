@@ -27,7 +27,7 @@ Completion means every judged node is approved, corrected, or parked, with remai
 - Apply ADD/DROP to a file node's `sources[].path`, or to `files[<file>]` for a linked file. Add newly linked technical specs to the directory node's sources.
 - If DROPs would leave a file node without a technical source, do not apply that verdict. A placement DROP means misplaced code; otherwise request a new judge for that node, quoting the verdict and requiring BLOCK or KEEP. A repeated invalid verdict is reported as not judged.
 - A linked file may lose its last spec: apply the DROPs and park that file as BLOCK.
-- After changing directory links, remove technical sources those links previously used but no longer name.
+- Remove from judged directory nodes any technical source that no linked file names.
 - After all edits, remove from every judged node each perspective none of its remaining technical sources serves; then run `pending` and add the perspectives it reports missing.
 
 ## Approval
@@ -46,8 +46,8 @@ The judge reads the supplied material and edits nothing. For directory nodes, ju
 
 | Finding | Criterion |
 |---------|-----------|
-| KEEP | A listed spec's rule governs this file. |
-| ADD | A candidate governs this file and its placement puts it here; a global candidate needs only the governing rule. Adding obligates implementation of its rules. |
+| KEEP | A spec listed for this file governs it. |
+| ADD | Another spec governs this file and its placement puts it here; a global spec needs only the governing rule. Adding obligates implementation of its rules. |
 | DROP | No rule applies to this file, or a cited placement/boundary rule puts it elsewhere. |
 | UNMET | A listed rule applies but is not implemented. Never use DROP for missing implementation. |
 | BLOCK | No listed spec or candidate governs the file; name the missing decision. |
