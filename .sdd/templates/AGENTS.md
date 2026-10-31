@@ -13,98 +13,155 @@ THE RULES ABOVE ARE NON-NEGOTIABLE.
 
 ---
 
-Product specs (`specs/`) are the product source of truth: what the system does, for whom, one perspective per actor. Technical specs (`src/specs/`) say how it is built. Code (`src/`) materializes both. Reach `specs/AGENTS.md` for product behavior or specs, `src/AGENTS.md` for technical specs or code. Every spec file, every code file, and every directory whose `.metadata.json` links the files that are not code is a node of **Metadata**; `pending` is the observer that reads them.
+Product behavior belongs to `specs/` (`specs/AGENTS.md`); technical decisions and code belong to `src/` (`src/AGENTS.md`). Their dependency contract is **Metadata** below.
 
 ## Harnesses
 
-The opening **UNIVERSAL RULES** block of this root `AGENTS.md` is edited only here, never in nested `AGENTS.md` files. `.agents/rules/universal.md` (Antigravity, `trigger: always_on`) and `.cursor/rules/universal.mdc` (Cursor, `alwaysApply: true`) are generated copies with the full text. After editing the block, regenerate each from the repository root with `go run -C .agents/tools ./rules --format antigravity > .agents/rules/universal.md` and `go run -C .agents/tools ./rules --format cursor > .cursor/rules/universal.mdc`; `go run -C .agents/tools ./rules` checks both.
+Edit **UNIVERSAL RULES** only in this root file. Regenerate its editor copies from the repository root:
+
+```sh
+go run -C .agents/tools ./rules --format antigravity > .agents/rules/universal.md
+go run -C .agents/tools ./rules --format cursor > .cursor/rules/universal.mdc
+go run -C .agents/tools ./rules
+```
 
 Cursor, Claude Code (v2.1.277+), Codex, and Antigravity (1.20.5+) read this file and every nested `AGENTS.md`. No `CLAUDE.md`, `CLAUDE.local.md`, or `GEMINI.md` exists in this repository: a `CLAUDE.md` or `CLAUDE.local.md` stops Claude Code from reading `AGENTS.md`.
 
-An `AGENTS.md` holds the structure of its tree: what lives where, who writes what, and the law that does not change with the product. What grows or varies with the product — which perspectives exist, global rules, the glossary, parked work, bug autopsies, testing guidelines — lives in a sibling file named by its theme (`PERSPECTIVES.md`, `spec.md`, `CONTEXT.md`, `TODO.md`, `BUG-AUTOPSIES.md`, `INCREMENTAL-TESTING-GUIDELINES.md`), referenced once from the `AGENTS.md` beside it. An `AGENTS.md` never grows with the product.
+An `AGENTS.md` owns its tree's structure, permissions, and stable law. Product-specific content lives in sibling files named by theme, referenced from the local `AGENTS.md`; the law never grows with the product. Define each obligation once, at its owner; procedures cite it directly.
 
-Skills live once, in `.agents/skills/<name>/SKILL.md`. Claude Code reads only `.claude/skills/`, so `.claude/skills/<name>` is a symlink to `../../.agents/skills/<name>`. A new skill gets both; edits go to `.agents/skills/`. A skill this project does not want is removed with its symlink and dropped from `skills` of `.sdd/.sdd-config.json`; the law and the other skills keep naming it, as what the framework offers, and `/sdd-update-framework` brings it back.
+Skills live in `.agents/skills/<name>/SKILL.md`, with `.claude/skills/<name>` symlinked to `../../.agents/skills/<name>`. Create or remove both together; edit only the source. Removing a skill also drops it from the config's `skills`, writing the kept list when the field is absent; references elsewhere still describe what the framework offers.
 
 `/<name>` names a skill. Invoke it as `/<name>` in Cursor, Claude Code, and Antigravity, and as `$<name>` in Codex. `$ARGUMENTS` in a skill is the text typed with the invocation; where the harness leaves it literal, read it from the user's message.
 
-A skill that delegates uses the harness's subagent tool: `Task` in Cursor, `Agent` in Claude Code, subagents in Codex, `invoke_subagent` in Antigravity. Diagnostics mean the harness LSP; where the harness has none, the project's type checker and linter.
+A skill that delegates uses the harness's subagent tool — `Task` in Cursor, `Agent` in Claude Code, subagents in Codex, `invoke_subagent` in Antigravity — general-purpose, with the parent's model, this workspace, and a fresh context, never resumed; at most 3 run at once, and the next wave waits for every reply. Diagnostics mean the harness LSP; where the harness has none, the project's type checker and linter.
+
+## Interviews
+
+Discover repository facts before asking. Ask the user one unresolved decision at a time, in dependency order, with a recommendation, its reason, and the cost of the rejected alternative; include context only when useful. Follow branches until shared understanding. Previously recorded decisions remain settled unless current evidence contradicts them. Name rule conflicts by title/path, glossary conflicts by entry, and law violations by ID (P, C, or Vocabulary) and passage; recommend a resolution. Validate drafts against their governing law before requesting the skill's confirmation.
 
 ## Working files
 
-`.sdd/` holds the configuration the tools read and the working files of the flow `/sdd-brainstorming` → `/sdd-prototype` → `/sdd-spec` → `/sdd-design` → `/sdd-implement`, never rules. `specs/` and `src/specs/` stay the source of truth; a brainstorm never overrides a rule.
+`.sdd/` holds configuration and drafts, never normative rules. The flow is `/sdd-brainstorming` → `/sdd-prototype` → `/sdd-spec` → `/sdd-design` → `/sdd-implement`.
 
-- `.sdd/.sdd-config.json`: the framework version this repository is on, the remote it came from, and the layout the tools read: `paths.specs` (the product specs), `paths.src` (the code), `paths.technical` (the technical specs). The file marks the repository root for every tool; a path left out takes the layout the framework ships. `perspectives` names each perspective of this product with the framework kind it came from, mirrored by `specs/PERSPECTIVES.md` and written by `/sdd-spec` (**Perspectives** in `specs/AGENTS.md`), absent for every shipped kind; `skills` names the skills kept, absent for all; the two are the one record of what this project keeps from the framework, so a file removed by hand comes back at the next update; `/sdd-update-framework` moves `version`; `paths` is set at the bootstrap and not moved afterwards.
+- `.sdd/.sdd-config.json` marks the repository root. It records `version`, `remote`, and `paths.specs`, `paths.src`, `paths.technical`; omitted paths use the shipped layout. Bootstrap fixes `paths`; `/sdd-update-framework` advances `version`. `perspectives` and `skills` select what the project keeps; omission means all shipped entries. Removing a file without changing these selections lets the next update restore it. Perspective management is defined in `specs/AGENTS.md`.
 - `.sdd/brainstorming/<name>.md`: versioned draft of an idea. `/sdd-brainstorming` writes it, `/sdd-prototype` reads it, `/sdd-spec` consumes and deletes it.
 - `.sdd/prototypes/`: git-ignored. One worktree and one manifest per prototype, owned by `/sdd-prototype`.
 
 ## Tools
 
-`.agents/tools/` holds procedures agents turned into code, in Go, so a later session runs them instead of redoing them by hand. Its law and catalog are in `.agents/tools/AGENTS.md`. Reach it before any mechanical procedure over the repository — a scan, a cross-check, a lookup.
+Read `.agents/tools/AGENTS.md` before a mechanical scan, cross-check, or lookup. It owns the tool contract and catalog.
 
-- **Reuse.** A catalog entry answers the question → run it; do not redo it by hand. Wrong or incomplete output → fix the tool in the same session; do not work around it.
-- **Create.** A session that performs by hand a deterministic procedure — same inputs, same answer, no judgment — that a later session will repeat, such as a skill step or a scan over `specs/`, writes it as a tool, runs it against the repository, and adds its catalog row, in the same session.
-- **One tool per question.** A neighboring question becomes a flag of the existing tool, not a second tool.
-- **Judgment is not a tool.** A recurring procedure that needs judgment goes in the report as a proposed skill change.
-- **Read-only.** A tool reports; the skill writes. Two exceptions: metadata, which `metadata` writes beyond the skeleton a skill authors (`version`, `sources[].path`, and `files`), and the files of the framework with `version` of `.sdd/.sdd-config.json`, which `update --apply` writes for `/sdd-update-framework`.
+- **Reuse:** run the tool that answers the question; fix wrong or incomplete output in the same session.
+- **Create:** turn a manually performed, repeatable deterministic procedure into a tool, run it, and add its catalog entry in that session. Extend an existing tool with a flag for a neighboring question.
+- **Judgment:** propose a skill change for recurring decisions that cannot be automated.
 
-Scripts and tooling of this repository are written in Go, standard library only; none is Python, TypeScript, or JavaScript. The pre-commit hook is the one shell file, a shim whose only command execs a Go tool. Every skill may create and edit files under `.agents/tools/` on top of its own permissions. `/sdd-prototype` is the exception: it names tool candidates in its report.
+Every skill may edit `.agents/tools/` beyond its own scope, except `/sdd-prototype`, which reports tool candidates. Scripts are Go, standard library only, never Python, TypeScript, or JavaScript; the pre-commit hook is the only shell file and only execs a Go tool.
 
 ## Metadata
 
-Sync between a spec and what consumes it is not written by hand. Every consumer records the version of each source it last validated against; a tool computes what is stale. Nothing records what consumes it.
+Consumers record the source versions they validated against. Sources never record consumers; `pending` computes work from these links.
 
-**Node** = a file with `<file>.metadata.json` beside it, or a directory under `src/` whose `.metadata.json` links the files of the directory that are not code — a **directory node**. Kinds, by place in the layout of `.sdd/.sdd-config.json`: **perspective** = a `spec.md` under the specs root (`specs/`), whose metadata the tool creates; **technical** = a `spec.md` under the technical root (`src/specs/`), whose skeleton `/sdd-design` writes; **code** = any other file under the code root (`src/`), whose skeleton `/sdd-implement` writes, or a directory node. A node is named by its path — `specs/business/invite/spec.md`, `src/api/auth/db.ts`, `src/api` for a directory node — and its metadata is that path plus `.metadata.json`: `src/api/.metadata.json` is the directory's. A perspective or technical node that is not `spec.md`, a `.metadata.json` beside a spec — under `specs/` or `src/specs/`, where the node of a spec is `spec.md.metadata.json` — a `<file>.metadata.json` with no `<file>` beside it, and a metadata file of a metadata file, of chrome, or of a directory are drift; a malformed technical node is drift, never a unit. A `spec.md` under the code root outside the technical root is code.
+### Nodes and coverage
 
-**Code** is what the compiler, interpreter, bundler, or test runner reads as source — a module, a component, a test, a migration script — and every code file is a node of its own; a test lists the sources of the file it tests, plus the technical spec of the test runner. Every other file under `src/` a spec governs — a manifest, a lockfile, compiler or bundler settings, a static asset, a fixture, a snapshot — is not code: it has no metadata of its own and is linked in `files` of the `.metadata.json` of its directory. The tool accepts either placement, because telling code from configuration is judgment; the judge of `/sdd-audit` reports a file placed wrong.
+Paths are repository-relative; `specs/`, `src/`, and `src/specs/` stand for the configured `paths`. A node is named by its content path.
 
-**Content** of a file node = the file. Of a directory node = the files `files` names. **Hash** = sha256 of the sorted entries `<name>\0<sha256 of the bytes>\n` of the content, `<name>` relative to the directory; a file node has one entry. Raw bytes, no normalization. **Rules**, on a perspective or technical node: each `###` title outside code fences → sha256 of its body, the lines up to the next heading of level 1–3 with blank lines at both ends removed. The title stays outside its hash, so a rename is told from a change.
+| Kind | Content | Metadata | Skeleton writer |
+|------|---------|----------|-----------------|
+| perspective | `specs/**/spec.md` | `spec.md.metadata.json` | `metadata` |
+| technical | `src/specs/**/spec.md` | `spec.md.metadata.json` | `/sdd-design` |
+| code file | source file under `src/`, outside the technical root | `<file>.metadata.json` | `/sdd-implement` |
+| code directory | non-code files directly in a directory under `src/` | `<dir>/.metadata.json` | `/sdd-implement` |
 
-**Coverage:** every regular file git tracks or would track under `specs/` or `src/` is one of: the file of a node, a `*.metadata.json`, a file a directory node links, or chrome — `AGENTS.md` anywhere, the files directly under `specs/`, the `.md` files directly under `src/`. Any other file is drift: in no node.
+**Code** is source read by a compiler, interpreter, bundler, or test runner: modules, components, tests, migration scripts. Each has its own node. Other governed files — manifests, lockfiles, settings, assets, fixtures, snapshots — belong in their directory node's `files`. The tool accepts either placement; `/sdd-audit` judges which applies. A `spec.md` under the code root outside the technical root is code.
 
-**Sources** a node may list: a technical node lists the perspective nodes it serves and the technical nodes it depends on; a code node lists at least one technical node — every technical node whose rules its code obeys directly, not only the one it is named after — and every perspective node those serve, so a product-only change reaches the code; a perspective node lists none. A source names the spec file (`src/specs/toolchain/spec.md`); a path that names its directory is dangling, and the tool says which file was meant. A product change reaches code only through the code nodes that list that perspective; it does not travel through technical dependencies, which is why a technical node no code node lists is pending.
+Every tracked or trackable regular file under `specs/` or `src/` must belong to a node, be metadata, or be **chrome**: any `AGENTS.md`, files directly under `specs/`, and `.md` files directly under `src/`. Other files are drift.
 
-Every field, for illustration; which ones a node carries depends on its kind, as stated below the example:
+Invalid metadata is also drift: orphan sidecars; sidecars attached to metadata, chrome, or directory paths instead of the directory's `.metadata.json`; `.metadata.json` outside a code directory, including beside a spec; perspective or technical nodes not named `spec.md`; and technical specs lacking their skeleton. A malformed technical node never becomes an implementation unit.
+
+### Fields
+
+Illustration of all fields; the tables below determine which apply:
 
 ```json
 {
   "version": 2,
   "algorithm": "sha256",
-  "hash": "<hash of this node>",
+  "hash": "<content hash>",
   "modified": "2026-10-29T18:04:12Z",
   "audited": 0,
-  "rules": { "<title>": "<sha256 of the body>" },
+  "rules": { "<title>": "<body hash>" },
   "sources": [
-    { "path": "specs/business/invite/spec.md", "hash": "<hash the source had at the last sync>", "rules": { "<title>": "<hash>" } }
+    { "path": "specs/business/invite/spec.md", "hash": "<last synced hash>", "rules": { "<title>": "<body hash>" } }
   ],
   "files": { "package.json": ["src/specs/toolchain/spec.md"], "favicon.ico": [] }
 }
 ```
 
-`modified` moves only when `hash` moves. `audited` is present only on a code node (**Audit** below). `rules` is present only on a perspective or technical node; `sources` is absent on a perspective node and on a global technical node, which lists none. `files` is present only on a directory node, which links at least one file: each key is the name of a tracked or trackable file directly in the directory — not a metadata file, not chrome, not a file with metadata of its own — and each value lists sources the node lists, or is empty while no spec governs the file yet: the file is covered, and the judge names its spec or `/sdd-audit` parks an audit gap. `sources` of a directory node may list more than `files` names, such as the perspective nodes its technical specs serve. A skill writes only the skeleton — `version`, `sources[].path`, and `files`; every hash and `audited` are the tool's. The file is never edited by hand beyond those fields.
+A skill authors only `version`, `sources[].path`, and `files`; the tool owns every other field.
 
-**States**, computed by `pending`, never stored:
+| Field | Contract |
+|-------|----------|
+| `hash` | sha256 of sorted entries `<name>\0<sha256 of bytes>\n`, names relative to the directory. A file node has one entry; a directory node hashes the files it links. Raw bytes, no normalization. |
+| `modified` | Changes only when `hash` changes. |
+| `rules` | Specs only. Each `###` title outside code fences maps to the sha256 of its body, ending at the next level 1–3 heading, with outer blank lines removed. Titles stay outside the hash so renames differ from body changes. |
+| `sources` | Source spec paths and their last synced hashes/rules; permitted kinds below. Paths name `spec.md`, never its directory. |
+| `files` | Directory nodes only, at least one entry. Keys name tracked or trackable files directly in that directory, excluding metadata, chrome, and files with their own nodes. Values list sources of this node; an empty list awaits a governing spec through audit. The node may list additional sources, such as served perspectives. |
+| `audited` | Code nodes only; defined in **Audit**. |
 
-| State | Means | Owed by |
-|-------|-------|---------|
-| drift | a metadata file missing, orphan (no file beside it), unreadable, or not matching its content; a technical `spec.md` without its skeleton; a perspective or technical node that is not `spec.md`; a `.metadata.json` outside the code root; a duplicate rule title; a markdown link in a spec that names nothing in the repository, its case included, or a heading the markdown file it names does not hold — a title or file removed, renamed, or moved; `files` on a node that is no directory node, absent on one, or naming a file that is no file of the directory, chrome, a node of its own, or a source the node does not list; a source a node may not list; a code node listing no technical spec; a perspective node a code node lists that none of its technical specs serves; a file under `specs/` or `src/` in no node; technical specs that source each other in a cycle; a gap in `TODO.md` that matches no rule, or an audit gap naming no code node that owes an audit | whoever last wrote there: `metadata --write`, or fix the sources or the links; a broken markdown link in a spec, its writer — `/sdd-design` in a technical spec, `/sdd-spec` in a perspective spec — which syncs that spec only once the link is fixed; it refuses no sync of the spec's consumers |
-| stale | a source's current hash differs from the recorded one; the rule delta names what was added, changed, removed, or renamed. On a code node, also: a perspective node its technical specs serve that it does not list yet | `/sdd-design` on a technical node, `/sdd-implement` on a code node |
-| dangling | a listed source is no node | same as stale |
-| unconsumed | a perspective node no technical node lists; a technical node no code node lists | `/sdd-design`; `/sdd-implement` |
-| waits | a code node whose technical spec, or one upstream of it, is stale or dangling; a code node one of whose sources, or a technical spec upstream of one, has drift that makes its content or metadata not what it claims, which refuses every sync against it; a technical spec stale or dangling — a code node's, upstream included, or a `# Design` line — one of whose own sources has that drift, which refuses its sync; a unit whose every rule a `## Design gap` item parks | `/sdd-design` first; that drift's owner first |
-| fresh | none of the above; on a code node it means implemented and tested, because only a passed Implementation gate syncs it | — |
+| Consumer | Sources |
+|----------|---------|
+| perspective | None; omit `sources`. |
+| technical | Perspective specs it serves and technical specs it depends on. A global technical spec lists none. |
+| code | At least one technical spec, every technical spec it obeys directly, and every perspective those specs serve. A test lists the tested file's sources plus its test runner's technical spec. |
 
-`pending` lists what `/sdd-implement` owes as **units**: one unit is one directory with its pending code nodes — the directory node and the file nodes directly in it — and the union of their rules, or one technical spec no code node lists. A unit waits when every pending node in it waits; a node that waits inside a unit that runs is listed and skipped.
+Product changes reach code through directly listed perspectives, never through technical dependency chains.
 
-**Audit**, orthogonal to the states: a code node is `fresh` and may still owe an audit. `audited` counts the approvals `/sdd-audit` recorded at the node's current `hash`: a judge read the code and confirmed that every technical spec the node lists governs it and that no technical spec it obeys is missing — on a directory node, that each linked file is governed by the specs it is linked to. It returns to 0 when `hash` moves and when a sync records a source listed since the last sync; an approval is recorded only on a node that has no drift and is no `/sdd-implement` unit, and the count then persists until one of those resets it. `pending` lists every code node at 0 under `# Audit` — owed to `/sdd-audit`; blocked while its content or metadata is not what it claims (a hash or rule map that does not match, an unreadable file, an invalid source or link); after `/sdd-implement` when the node is one of its units; or parked under `## Audit gap` of `TODO.md` because no technical spec governs the code yet — the gap names a code node, a linked file, which parks the directory node that links it, or a directory, which parks every code node at or under it. A node listing no technical spec, a file linked to no spec, or a perspective none of its technical specs serves, is owed: the judge names the spec, and `/sdd-audit` drops the perspective. `pending --audit` prints the dossiers a judge needs, grouped by directory: one judge per directory. Only 0 against ≥ 1 is read; the count is informational.
+### States
 
-**Writers:**
+Computed by `pending`, never stored:
 
-| Writer | Writes | Then runs |
-|--------|--------|-----------|
-| `/sdd-spec` | `specs/**/spec.md` | `metadata --write <dir>` |
-| `/sdd-design` | `src/specs/<name>/spec.md` and the `sources[].path` of its node | `metadata --sync <dir>`, also to acknowledge a stale source that needs no change |
-| `/sdd-implement` | code, the `sources[].path` of its code nodes — a new node, a perspective node its technical specs came to serve, a dangling source dropped — and `files` of its directory nodes | `metadata --write <dir>` after every write; `metadata --sync <node…>` only after the Implementation gate, on the nodes that passed it |
-| `/sdd-audit` | the `sources[].path` and `files` of a code node on a judge's verdict — a technical spec the code obeys added, one that governs none of it dropped, a link corrected, and the perspective nodes that follow — and `## Audit gap` of `TODO.md` | `metadata --write <node…>` on a node it changed; `metadata --approve <node…>` on a node the judge approved as listed |
-| pre-commit hook | — | `metadata --staged`: refreshes and stages the metadata of every node holding a staged file, never a sync. It hashes the working tree, so a partially staged file is hashed as it is on disk. It refuses the commit when a staged file is in no node — a code file added without its metadata, a metadata file deleted without its file — and when a renamed file left its metadata behind as an orphan |
+| State | Condition | Owner |
+|-------|-----------|-------|
+| drift | Invalid nodes/fields/coverage above; missing, unreadable, or mismatched metadata; duplicate rule titles; forbidden sources; a code node listing no technical spec, or a perspective none of its technical specs serves; technical dependency cycles; a TODO gap matching no rule, or an Audit gap naming no code node that owes an audit; broken spec links. | Writer of the affected artifact. |
+| stale | A source hash changed; also, a code node omits a perspective its technical specs serve. Rule deltas distinguish additions, changes, removals, and renames. | `/sdd-design` for technical nodes; `/sdd-implement` for code. |
+| dangling | A source path names no node. A directory path gets a hint naming its spec file. | Same as stale. |
+| unconsumed | A perspective has no technical consumer, or a technical spec has no code consumer. | `/sdd-design`; `/sdd-implement`, respectively. |
+| waits | Code depends on a stale/dangling technical spec, upstream included; a source has blocking drift; or every rule of a unit is parked by a Design gap. | Design, the drift's owner, or the gap's owner first. |
+| fresh | None of the above. For code, sync certifies implementation and tests through the Implementation gate. | — |
 
-A tool takes a node — its path or its metadata file — or a directory, which names its directory node and every node at or under it; `--sync` and `--approve` take one node per target and refuse a directory that names several, so a directory node whose directory holds other nodes is named by its metadata file (`src/api/.metadata.json`). The hook is `.githooks/pre-commit`; enable it once per clone with `git config core.hooksPath .githooks`. It needs Go. A metadata file whose own hash moved travels in the commit of the content it hashes; a sync that changed only its recorded sources — an acknowledgement, a revalidation — or an approval or a `sources` edit, which never moves a hash, is a commit of its own, type `docs` — unless the file was never committed, when it travels whole with its content. A `files` edit that links or unlinks a file, by `/sdd-audit` or by `/sdd-implement`, moves the hash because the content of the directory node changed; it is still a commit of its own, unless a linked file changed with it, when it travels with that file.
+**Links:** a markdown link in a spec must resolve, with exact case, to a tracked or trackable existing path and, when present, a heading in its markdown target. Its writer fixes drift before syncing that spec: `/sdd-spec` for perspective specs, `/sdd-design` for technical specs. Broken links alone do not block consumers' syncs.
+
+**Blocking drift:** content or metadata that is not what it claims prevents sync against that source. Code also checks upstream technical specs. A stale/dangling technical spec, including a `# Design` entry, waits when one of its own sources has this drift.
+
+**Units:** one directory's pending code nodes and the union of their rules, or one technical spec with no code consumer. A unit waits if every pending node waits; runnable units skip waiting nodes. Batch ordering and size belong to `/sdd-implement`'s **Continue**.
+
+### Audit
+
+`audited` counts approvals of a code node's source list at its current hash. The judge verifies that each listed technical spec governs the code and none is missing; for directory nodes, it judges each file's links. Coverage is not an audit approval.
+
+The count resets to 0 when content changes or sync records a newly listed source; otherwise it persists. Approval requires no drift and no implementation unit. Only 0 versus ≥ 1 affects work; larger counts are informational.
+
+`pending` lists nodes at 0 under `# Audit`:
+
+- **Blocked:** invalid or mismatched content/metadata, including invalid links or sources.
+- **After implementation:** the node is an implementation unit.
+- **Parked:** an Audit gap names the node, a linked file (parking only its directory node), or an ancestor directory.
+- **Owed:** ready for judgment. Missing technical sources and ungoverned linked files go to the judge; `/sdd-audit` drops unserved perspectives; none blocks judgment.
+
+### Writers
+
+All commands below run as `go run -C .agents/tools ./metadata <flags>`.
+
+| Writer | Writes | Metadata operation |
+|--------|--------|--------------------|
+| `/sdd-spec` | Product specs | `--write <dir>` |
+| `/sdd-design` | Technical specs and their skeletons | `--sync <node…>`, including revalidation without text changes |
+| `/sdd-implement` | Code and its skeletons | `--write <dir>` after writes; `--sync <node…>` after the Implementation gate |
+| `/sdd-audit` | Code sources/file links on a verdict; Audit gaps | `--write <node…>` for edits; `--approve <node…>` for approved nodes; never sync |
+| pre-commit | Stages refreshed metadata | `--staged`; never sync |
+
+A target is a content path (a linked file selects its directory node), a metadata path, or a directory (its node and descendants). `--sync` and `--approve` require one node per target; use `<dir>/.metadata.json` to select a directory node alone.
+
+Sync refuses broken links in the target spec, dangling or forbidden sources, blocking source drift, a code source list without a technical spec or not matching the perspectives its technical specs serve, and code waiting on design.
+
+Enable `.githooks/pre-commit` with `git config core.hooksPath .githooks`; Go is required. It hashes the working tree, including unstaged portions of staged files, and rejects staged files without nodes and orphan metadata left by deletions or renames. Commit grouping belongs to `/sdd-commit`.
