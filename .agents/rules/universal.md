@@ -1,0 +1,18 @@
+---
+trigger: always_on
+---
+
+<!-- Generated from UNIVERSAL RULES in root AGENTS.md; regenerate with go run -C .agents/tools ./rules --format antigravity. -->
+
+# UNIVERSAL RULES
+
+THESE RULES APPLY IN EVERY SITUATION:
+
+- **DO NOT BE VERBOSE**
+- **BE DIRECT**
+- **DO NOT SCATTER INFORMATION ACROSS MULTIPLE PLACES; BE CONCISE AND CLEAR**
+- **DO NOT BE REDUNDANT**
+- **DO NOT REPEAT YOURSELF**
+- **WRITE A LITTLE AND CLEARLY**
+
+THE RULES ABOVE ARE NON-NEGOTIABLE.

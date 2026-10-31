@@ -1,3 +1,18 @@
+# UNIVERSAL RULES
+
+THESE RULES APPLY IN EVERY SITUATION:
+
+- **DO NOT BE VERBOSE**
+- **BE DIRECT**
+- **DO NOT SCATTER INFORMATION ACROSS MULTIPLE PLACES; BE CONCISE AND CLEAR**
+- **DO NOT BE REDUNDANT**
+- **DO NOT REPEAT YOURSELF**
+- **WRITE A LITTLE AND CLEARLY**
+
+THE RULES ABOVE ARE NON-NEGOTIABLE.
+
+---
+
 # SDD framework
 
 This repository is the spec-driven development (SDD) framework as a template. Nothing at this root is a project. A project is made by cloning this repository and following `TEMP_BOOTSTRAP.md`, which materializes `.sdd/templates/` at the project's root, adapted to that product, and deletes itself.
@@ -8,7 +23,7 @@ This repository is the spec-driven development (SDD) framework as a template. No
 AGENTS.md                 # this file: law of the framework repository
 TEMP_BOOTSTRAP.md         # the prompt a project follows after cloning; not read for framework work
 .githooks/pre-commit      # shim: exec go run -C .agents/tools ./guard — tests the templates, bumps the version on main
-.agents/tools/            # Go module `framework`: the tools of this repository only (guard); catalog in its AGENTS.md
+.agents/tools/            # Go module `framework`: guard and a rules symlink to the templates; catalog in its AGENTS.md
 .agents/skills/           # skills of this repository only: sdd-sandbox; sdd-commit is a symlink into the templates
 .claude/skills/           # symlinks to .agents/skills/, as the templates' AGENTS.md says
 .sdd/templates/           # the framework: everything a project receives, laid out as the project will hold it
@@ -17,6 +32,8 @@ TEMP_BOOTSTRAP.md         # the prompt a project follows after cloning; not read
 ```
 
 ## Templates
+
+The opening **UNIVERSAL RULES** block of this root `AGENTS.md` is edited only here, never in nested `AGENTS.md` files. `.agents/rules/universal.md` (Antigravity, `trigger: always_on`) and `.cursor/rules/universal.mdc` (Cursor, `alwaysApply: true`) are generated copies with the full text. After editing the block, regenerate each from this root with `go run -C .agents/tools ./rules --format antigravity > .agents/rules/universal.md` and `go run -C .agents/tools ./rules --format cursor > .cursor/rules/universal.mdc`; `go run -C .agents/tools ./rules` checks both. The templates carry the same arrangement for each project.
 
 `.sdd/templates/` is the framework. Its law is its own `AGENTS.md` and the nested ones, read as if `.sdd/templates/` were a repository root: a path they name, such as `specs/AGENTS.md` or `.agents/tools/`, is relative to it. Edit the framework there and only there. The templates carry the default layout — `specs/`, `src/`, `src/specs/`, the perspectives business, user, and operator — and `TEMP_BOOTSTRAP.md` says what a project adapts.
 
