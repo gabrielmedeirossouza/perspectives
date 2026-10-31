@@ -39,7 +39,7 @@ Run exactly these, from the clone root, after the interview:
    }
    ```
 
-2. Remove the framework's own root, and nothing else: `rm -rf AGENTS.md .gitignore .githooks .agents .claude`.
+2. Remove the framework's own root, and nothing else: `rm -rf AGENTS.md .gitignore .githooks .agents .claude .cursor`.
 3. Materialize: `go run -C .sdd/templates/.agents/tools ./update --apply --root "$(pwd)" --from .` — `--root` is the project root, because `go run -C` moves the working directory under `.sdd/templates/`, which holds a config of its own, and `--from` is relative to `--root`. Read its plan: every template file is an `add` at its place in this layout, a `skip` names a dropped perspective or skill, and each `by hand` line is yours in **Adapt**.
 4. Remove what only the framework repository needs: `rm -rf .sdd/templates .sdd/sandbox`. This file stays until **Finish**.
 5. Enable the hook: `git config core.hooksPath .githooks`.
@@ -57,6 +57,7 @@ Prose the tool cannot write. English, the shape of the shipped file, nothing abo
 Every line holds before finishing:
 
 - `go vet ./... && go test ./...` in `.agents/tools` are green.
+- `go run -C .agents/tools ./rules` prints only `ok` lines.
 - `go run -C .agents/tools ./metadata` prints `no node under …`; `go run -C .agents/tools ./pending` prints `No pending work.`
 - `find .claude/skills -type l ! -exec test -e {} \; -print` prints nothing; `test -x .githooks/pre-commit` holds.
 - `test ! -e .sdd/templates && test ! -e .sdd/sandbox` holds; `ls .agents/skills` lists exactly the skills kept.
