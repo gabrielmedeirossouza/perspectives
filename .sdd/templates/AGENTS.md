@@ -1,6 +1,23 @@
+# UNIVERSAL RULES
+
+THESE RULES APPLY IN EVERY SITUATION:
+
+- **DO NOT BE VERBOSE**
+- **BE DIRECT**
+- **DO NOT SCATTER INFORMATION ACROSS MULTIPLE PLACES; BE CONCISE AND CLEAR**
+- **DO NOT BE REDUNDANT**
+- **DO NOT REPEAT YOURSELF**
+- **WRITE A LITTLE AND CLEARLY**
+
+THE RULES ABOVE ARE NON-NEGOTIABLE.
+
+---
+
 Product specs (`specs/`) are the product source of truth: what the system does, for whom, one perspective per actor. Technical specs (`src/specs/`) say how it is built. Code (`src/`) materializes both. Reach `specs/AGENTS.md` for product behavior or specs, `src/AGENTS.md` for technical specs or code. Every spec file, every code file, and every directory whose `.metadata.json` links the files that are not code is a node of **Metadata**; `pending` is the observer that reads them.
 
 ## Harnesses
+
+The opening **UNIVERSAL RULES** block of this root `AGENTS.md` is edited only here, never in nested `AGENTS.md` files. `.agents/rules/universal.md` (Antigravity, `trigger: always_on`) and `.cursor/rules/universal.mdc` (Cursor, `alwaysApply: true`) are generated copies with the full text. After editing the block, regenerate each from the repository root with `go run -C .agents/tools ./rules --format antigravity > .agents/rules/universal.md` and `go run -C .agents/tools ./rules --format cursor > .cursor/rules/universal.mdc`; `go run -C .agents/tools ./rules` checks both.
 
 Cursor, Claude Code (v2.1.277+), Codex, and Antigravity (1.20.5+) read this file and every nested `AGENTS.md`. No `CLAUDE.md`, `CLAUDE.local.md`, or `GEMINI.md` exists in this repository: a `CLAUDE.md` or `CLAUDE.local.md` stops Claude Code from reading `AGENTS.md`.
 
