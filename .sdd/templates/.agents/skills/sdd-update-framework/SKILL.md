@@ -26,6 +26,7 @@ Read root **Working files** and the tool catalog's `update` contract. The tool c
 - Elsewhere, take framework text unless it replaces a deliberate project change. Ask when the choice is unclear, or when the framework removed a file the project changed.
 - If the user wants a skipped skill or new perspective, add its config selection and rerun Apply. Write a custom perspective's missing law and adapt the catalog under **Perspectives** in `specs/AGENTS.md`.
 - Resolve every `conflict` line of the plan, including `kept` ones without markers; leave no conflict markers.
+- Keep existing `version: 2` metadata untouched when optional fields (`uses`, `adopted`, `reviewed`) are introduced; never copy full rule catalogs into `uses` or discard valid checkpoints in `.sdd/reviews/`.
 
 ## Verification
 

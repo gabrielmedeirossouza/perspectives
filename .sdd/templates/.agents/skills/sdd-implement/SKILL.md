@@ -15,11 +15,11 @@ Read **Metadata** in the root `AGENTS.md`, `src/AGENTS.md` (C1–C8 and Implemen
 
 ## Procedure
 
-1. Resolve the target, or take the batch **Continue** passes. Read its technical specs, served perspectives, technical dependencies, code consumers and metadata, and glossary.
-2. Run `go run -C .agents/tools ./pending` for changed rules and waiting nodes. Apply title filters after resolving this set. A waiting unit does not run; report its blocker and stop.
-3. Queue removed rules first, then the pending deltas. For an unconsumed technical spec, queue all its rules and served product rules. Order by citations, product before its technical rule, then file order.
+1. Resolve the target, or take the batch **Continue** passes. Read its technical specs, served perspectives, technical dependencies, the pending code consumers and metadata in the target unit/rule (never unaffected consumers), and glossary.
+2. Run `go run -C .agents/tools ./pending` for changed rules, unconsumed feature rules, and waiting nodes. Apply title filters after resolving this set. A waiting unit does not run; report its blocker and stop.
+3. Queue removed and renamed rules first, then the pending deltas and unconsumed feature rules. For an unconsumed technical spec, queue its unconsumed rules and served product rules still lacking a code consumer. Order by citations, product before its technical rule, then file order.
 4. Group phases by the owner's `##` section, in bands of 6–10 items; merge only with the next section in that file. One owner per phase; removals go first. Present the plan.
-5. Execute **Orchestration** through the Implementation gate. Maintain sources and clean removals under C6.
+5. Execute **Orchestration** through the Implementation gate. Select applicable rules in `sources[].uses` when creating or updating code metadata, cover the union of perspective rules served by listed technical specs, update `uses` on renames and removals, and clean removals under C6.
 6. Report completion by unit, tests, synced or unfinished nodes, gaps, and audit work. Include created files and C7 justifications for indirections without repeating the phase log.
 
 Finish when queued rules pass the gate or are parked as Design gaps, and removed rules are cleaned.

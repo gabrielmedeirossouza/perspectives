@@ -26,9 +26,9 @@ Never use broad staging, amend, hook bypass, force push, tags, manual version bu
 
 | Change | Commit |
 |--------|--------|
-| Node hash changes with content | With that content |
-| Sync changes only recorded sources | Separate `docs(<scope>): acknowledge <source>` |
-| Approval or source-list edit | Separate `docs(<scope>): audit sources` |
+| Node hash, `adopted`, or `reviewed` changes with content | With that content (and any removed `.sdd/reviews/<id>.json` checkpoint when closing its review) |
+| Sync changes only recorded sources (`hash`, `rules`, `adopted`) | Separate `docs(<scope>): acknowledge <source>` |
+| Approval, `sources` / `uses` edit, or `.sdd/reviews/<id>.json` checkpoint update | Separate `docs(<scope>): audit sources` (keeping checkpoint verdicts and their applied metadata edits in the same commit) |
 | File links change without linked content changes | Separate docs commit, including the resulting hash |
 | Previously uncommitted metadata | Whole file with its content |
 

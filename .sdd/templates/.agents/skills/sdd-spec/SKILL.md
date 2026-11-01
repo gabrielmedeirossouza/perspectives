@@ -11,7 +11,7 @@ Read `specs/AGENTS.md`, its perspective catalog, and the target perspective's la
 
 `$ARGUMENTS`: `[<perspective-or-feature>:]<request>` or `brainstorming[:<name>]`.
 
-Locate owners from the request; paths are optional. Without an argument, run `go run -C .agents/tools ./pending` and read `TODO.md` under `specs/`, list Drift entries assigned to `/sdd-spec` plus `Missing spec` and `Spec gap` items, and stop. Never infer a target from an earlier session or branch.
+Locate owners from the request; paths are optional. Without an argument, run `go run -C .agents/tools ./pending` and read `TODO.md` under `specs/`, list Review and Drift entries assigned to `/sdd-spec` plus `Missing spec` and `Spec gap` items, and stop. Never infer a target from an earlier session or branch.
 
 For `brainstorming[:<name>]`, or a request asking to use a brainstorm, resolve one file in `.sdd/brainstorming/`: use the explicit name; if missing, list available files and stop. Without a name, use the sole file, ask when several exist, or suggest `/sdd-brainstorming` when none exists.
 
@@ -21,7 +21,7 @@ For `brainstorming[:<name>]`, or a request asking to use a brainstorm, resolve o
 2. Decompose into atomic items — a brainstorm supplies its Candidate items, Decisions, Flows, and Edge cases — and apply **Writing gate** step 1. Name technical items for `/sdd-design` with the product rules they serve; name unrelated items as out of scope and continue the rest.
 3. Interview to close open decisions and conflicts.
 4. Confirm: “Shall I apply these changes?”
-5. Apply the **Writing gate**, including perspective lifecycle changes when requested. Delete a consumed brainstorm only after every agreed item passes; keep it if declined or interrupted.
-6. Report changes by owner, remaining blockers, technical handoffs, and any deleted brainstorm. If its prototype manifest still exists, name `/sdd-prototype --discard <name>` as cleanup; leave the prototype alive.
+5. Apply the **Writing gate**, including perspective lifecycle changes when requested and applicability review classification/closing (`metadata --review <spec> --scope …` / `--close`) on written perspective specs, without editing code or consumer metadata. Delete a consumed brainstorm only after every agreed item passes; keep it if declined or interrupted.
+6. Report changes by owner, review checkpoints opened or closed, remaining blockers, technical/audit handoffs, and any deleted brainstorm. If its prototype manifest still exists, name `/sdd-prototype --discard <name>` as cleanup; leave the prototype alive.
 
 Permissions are the Writing gate's; never edit a brainstorm.
