@@ -20,15 +20,37 @@ func Refresh(n *Node, now time.Time) (*meta.Metadata, error) {
 			return nil, errors.New(f.msg)
 		}
 	}
-	m := &meta.Metadata{Version: meta.Version, Algorithm: meta.Algorithm, Hash: n.Hash, Rules: n.Rules}
+	m := &meta.Metadata{
+		Version:   meta.Version,
+		Algorithm: meta.Algorithm,
+		Hash:      n.Hash,
+		Adopted:   n.Adopted,
+		Rules:     n.Rules,
+	}
 	if n.Meta != nil {
 		m.Modified = n.Meta.Modified
 		m.Sources = make([]meta.Source, len(n.Meta.Sources))
-		copy(m.Sources, n.Meta.Sources)
-		for i := range m.Sources {
-			m.Sources[i].Path = cleanRel(m.Sources[i].Path)
+		for i, s := range n.Meta.Sources {
+			s.Path = cleanRel(s.Path)
+			s.Rules = maps.Clone(s.Rules)
+			if s.Uses != nil {
+				s.Uses = append([]string(nil), s.Uses...)
+			}
+			m.Sources[i] = s
 		}
 		m.Files = cloneFiles(n.Meta.Files)
+		if n.spec() {
+			switch {
+			case n.selective || n.review != nil || n.reviewInvalid != "":
+				if n.Meta.Reviewed != "" {
+					m.Reviewed = n.Meta.Reviewed
+				} else if n.review == nil && n.reviewInvalid == "" && !n.syncedSelective && n.Meta.Hash == n.Hash {
+					m.Reviewed = n.Hash
+				}
+			case n.Meta.Reviewed != "":
+				m.Reviewed = n.Hash
+			}
+		}
 	}
 	if n.Meta == nil || n.Meta.Hash != n.Hash || m.Modified == "" {
 		m.Modified = meta.Stamp(now)
@@ -38,6 +60,22 @@ func Refresh(n *Node, now time.Time) (*meta.Metadata, error) {
 		m.Audited = &audited
 	}
 	return m, nil
+}
+
+// ensureReviewed initializes reviewed to the current spec hash when an intact
+// spec without reviewed and without an open review checkpoint gains its first
+// selective consumer via --sync or --approve.
+func (g *Graph) ensureReviewed(spec *Node) error {
+	if !spec.spec() || spec.Meta == nil || spec.MetaErr != nil {
+		return nil
+	}
+	if spec.Meta.Reviewed != "" || spec.review != nil || spec.reviewInvalid != "" || spec.syncedSelective || spec.Meta.Hash != spec.Hash {
+		return nil
+	}
+	cp := *spec.Meta
+	cp.Reviewed = spec.Hash
+	_, err := Save(spec, &cp)
+	return err
 }
 
 // Sync refreshes and records source versions after dependency validation.
@@ -66,23 +104,82 @@ func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 		if line := g.driftLine(e.To); line != "" {
 			return nil, fmt.Errorf("%s; fix it first", line)
 		}
-		if e.Source.Hash == "" && m.Audited != nil {
-			*m.Audited = 0
+		if e.Selective() {
+			ci := map[string]string{}
+			for _, t := range e.To.Order {
+				ci[strings.ToLower(t)] = t
+			}
+			renamedTo := map[string]string{}
+			for _, r := range e.Delta.Renamed {
+				renamedTo[r[0]] = r[1]
+			}
+			for _, u := range e.Source.Uses {
+				if _, ok := e.To.Rules[u]; ok {
+					continue
+				}
+				if newTitle, ok := renamedTo[u]; ok {
+					return nil, fmt.Errorf("`%s` selects %q from `%s`, which was renamed to %q; update uses first", n.Rel, u, e.To.Rel, newTitle)
+				}
+				if _, inSnap := e.Source.Rules[u]; inSnap {
+					return nil, fmt.Errorf("`%s` selects %q from `%s`, which was removed; update uses first", n.Rel, u, e.To.Rel)
+				}
+				if actual, ok := ci[strings.ToLower(u)]; ok {
+					return nil, fmt.Errorf("`%s` lists %q in uses for `%s`, which differs in case from %q; use %q", n.MetaRel, u, e.To.Rel, actual, actual)
+				}
+				return nil, fmt.Errorf("`%s` lists unknown rule %q in uses for `%s`", n.MetaRel, u, e.To.Rel)
+			}
+			if m.Audited != nil {
+				goneHashes := map[string]int{}
+				for oldTitle, oldHash := range e.Source.Rules {
+					if _, ok := e.To.Rules[oldTitle]; !ok {
+						goneHashes[oldHash]++
+					}
+				}
+				for _, u := range e.Source.Uses {
+					if _, hadSnap := e.Source.Rules[u]; hadSnap {
+						continue
+					}
+					curHash := e.To.Rules[u]
+					if goneHashes[curHash] > 0 {
+						goneHashes[curHash]--
+					} else {
+						*m.Audited = 0
+					}
+				}
+			}
+			m.Sources[i].Hash = ""
+			pruned := make(map[string]string, len(e.Source.Uses))
+			for _, u := range e.Source.Uses {
+				pruned[u] = e.To.Rules[u]
+			}
+			m.Sources[i].Rules = pruned
+		} else {
+			if e.Source.Hash == "" && m.Audited != nil {
+				*m.Audited = 0
+			}
+			m.Sources[i].Hash = e.To.Hash
+			m.Sources[i].Rules = maps.Clone(e.To.Rules)
 		}
-		m.Sources[i].Hash = e.To.Hash
-		m.Sources[i].Rules = maps.Clone(e.To.Rules)
+		if n.Kind == Technical && e.To.Kind == Technical {
+			m.Sources[i].Adopted = e.To.Adopted
+		} else {
+			m.Sources[i].Adopted = ""
+		}
 	}
 	if n.Kind == Code {
 		var problems []string
 		if msg := g.noTechnical(n); msg != "" {
 			problems = append(problems, msg) // which perspectives are served is unknown without a technical spec
 		} else {
-			served, _ := g.served(n)
-			for _, p := range g.missing(n) {
-				problems = append(problems, fmt.Sprintf("`%s` lists `%s` but not `%s`, which it serves; add it to sources", n.Rel, served[p].Rel, p.Rel))
+			for _, mc := range g.missingCov(n) {
+				if mc.unlisted {
+					problems = append(problems, fmt.Sprintf("`%s` lists `%s` but not `%s`, which it serves; add it to sources", n.Rel, mc.servedBy.Rel, mc.node.Rel))
+				} else {
+					problems = append(problems, fmt.Sprintf("`%s` lists `%s` (which serves %s of `%s`), but omits %s in uses; add %s to uses", n.Rel, mc.servedBy.Rel, meta.Quoted(mc.titles), mc.node.Rel, meta.Quoted(mc.titles), meta.Quoted(mc.titles)))
+				}
 			}
-			for _, p := range g.unserved(n) {
-				problems = append(problems, unservedMsg(n, p))
+			for _, uc := range g.unservedCov(n) {
+				problems = append(problems, uc.msg)
 			}
 		}
 		if w := g.codeWait(n); w != "" {
@@ -100,6 +197,13 @@ func (g *Graph) Sync(n *Node, now time.Time) (*meta.Metadata, error) {
 		}
 		if len(problems) > 0 {
 			return nil, errors.New(strings.Join(problems, "\n"))
+		}
+	}
+	for _, e := range n.Sources {
+		if e.Valid() && e.Selective() {
+			if err := g.ensureReviewed(e.To); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return m, nil
@@ -131,6 +235,21 @@ func (g *Graph) Approve(n *Node, now time.Time) (*meta.Metadata, error) {
 	if err != nil {
 		return nil, err
 	}
+	for i, e := range n.Sources {
+		if e.Valid() && e.Selective() {
+			m.Sources[i].Hash = ""
+			pruned := make(map[string]string, len(e.Source.Uses))
+			for _, u := range e.Source.Uses {
+				if h, ok := e.Source.Rules[u]; ok {
+					pruned[u] = h
+				}
+			}
+			m.Sources[i].Rules = pruned
+			if err := g.ensureReviewed(e.To); err != nil {
+				return nil, err
+			}
+		}
+	}
 	*m.Audited++
 	return m, nil
 }
@@ -146,10 +265,11 @@ func Save(n *Node, m *meta.Metadata) (bool, error) {
 	for i, e := range n.Sources {
 		if i < len(m.Sources) {
 			e.Source = m.Sources[i]
-			if e.Valid() {
-				e.Delta = meta.Diff(e.Source.Rules, e.To.Rules, e.To.Order)
-			}
+			e.computeDelta()
 		}
+	}
+	if n.g != nil {
+		n.g.rebuildIndex()
 	}
 	if old, err := os.ReadFile(n.MetaPath); err == nil && bytes.Equal(old, b) {
 		return false, nil

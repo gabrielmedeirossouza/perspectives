@@ -40,6 +40,9 @@ func gitInit(t *testing.T) string {
 	if out, err := exec.Command("git", "init", "-q", root).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v %s", err, out)
 	}
+	for _, kv := range [][2]string{{"gc.auto", "0"}, {"maintenance.auto", "false"}, {"core.fsmonitor", "false"}} {
+		exec.Command("git", "-C", root, "config", kv[0], kv[1]).Run()
+	}
 	write(t, root, "AGENTS.md", "# Root\n")
 	write(t, root, ".sdd/.sdd-config.json", `{"version": 0, "paths": {"specs": "specs", "src": "src", "technical": "src/specs"}}`+"\n")
 	write(t, root, "specs/AGENTS.md", "# Perspectives\n")
@@ -1551,4 +1554,731 @@ func TestSpecGapOnSyncedOrUnservedPerspectiveAndOutOfScopePurpose(t *testing.T) 
 	if !namesRe("src", "src", "package.json").MatchString("Manifest `/src/package.json` holds scripts.") {
 		t.Fatal("namesRe missed linked file with leading slash")
 	}
+}
+
+func refresh(t *testing.T, root, rel string) *Graph {
+	t.Helper()
+	g := load(t, root)
+	m, err := Refresh(g.Node(rel), time.Unix(0, 0))
+	if err != nil {
+		t.Fatalf("Refresh(%s): %v", rel, err)
+	}
+	if _, err := Save(g.Node(rel), m); err != nil {
+		t.Fatal(err)
+	}
+	return g
+}
+
+func TestSelectiveEdgesPerspectiveCoverageAndAdoptedPatterns(t *testing.T) {
+	root := fixture(t)
+	settle(t, root)
+	git := gitIn(t, root)
+
+	// Add a global perspective spec and Adopted patterns on T.
+	const GP = "specs/business/spec.md"
+	write(t, root, GP, "# Business Global\n\nPurpose.\n\n## Domain\n\n### Tenant isolation\n\nEvery request **must** scope by tenant.\n\n### Audit trail\n\nMutations **must** emit an event.\n")
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## Adopted patterns\n\n- Hexagonal ports.\n\n## Tests\n\n### Vitest as test runner\n\nTests **must** run on `vitest`.\n\n### Snapshot policy\n\nAvoid inline snapshots.\n")
+	refresh(t, root, GP)
+	refresh(t, root, T)
+
+	// I selects "Invite expiry" from P, "Tenant isolation" from GP, and "Vitest as test runner" from T.
+	write(t, root, metaOf(I), `{"version": 2, "sources": [{"path": "`+P+`", "uses": ["Invite expiry"]}, {"path": "`+GP+`", "uses": ["Tenant isolation"]}, {"path": "`+T+`", "uses": ["Vitest as test runner"]}]}`+"\n")
+	sync(t, root, I)
+
+	// P has "Single use" unconsumed by any technical spec; GP has "Audit trail" unconsumed.
+	g := load(t, root)
+	if !has(g.Design(), "`"+P+"` has unconsumed rules: \"Single use\"") || !has(g.Design(), "`"+GP+"` has unconsumed rules: \"Audit trail\"") {
+		t.Fatalf("expected unconsumed perspective rules in Design: %v", g.Design())
+	}
+
+	// Code C lists P integrally while technical support is selective -> unserved!
+	write(t, root, metaOf(C), `{"version": 2, "sources": [{"path": "`+I+`", "uses": ["Invite endpoint"]}, {"path": "`+T+`", "uses": ["Vitest as test runner"]}, {"path": "`+P+`"}, {"path": "`+GP+`", "uses": ["Tenant isolation"]}]}`+"\n")
+	g = load(t, root)
+	if _, err := g.Sync(g.Node(C), time.Now()); err == nil || !strings.Contains(err.Error(), "without uses") {
+		t.Fatalf("expected Sync refusal for integral perspective with selective technical support, got %v", err)
+	}
+
+	// Code C lists P with unserved rule "Single use" -> unserved!
+	write(t, root, metaOf(C), `{"version": 2, "sources": [{"path": "`+I+`", "uses": ["Invite endpoint"]}, {"path": "`+T+`", "uses": ["Vitest as test runner"]}, {"path": "`+P+`", "uses": ["Invite expiry", "Single use"]}, {"path": "`+GP+`", "uses": ["Tenant isolation"]}]}`+"\n")
+	g = load(t, root)
+	if _, err := g.Sync(g.Node(C), time.Now()); err == nil || !strings.Contains(err.Error(), `none of its technical specs serves "Single use"`) {
+		t.Fatalf("expected Sync refusal for unserved perspective rule, got %v", err)
+	}
+
+	// Code C lists GP but omits required rule "Tenant isolation" (by only listing P) -> missing!
+	write(t, root, metaOf(C), `{"version": 2, "sources": [{"path": "`+I+`", "uses": ["Invite endpoint"]}, {"path": "`+T+`", "uses": ["Vitest as test runner"]}, {"path": "`+P+`", "uses": ["Invite expiry"]}]}`+"\n")
+	g = load(t, root)
+	if _, err := g.Sync(g.Node(C), time.Now()); err == nil || !strings.Contains(err.Error(), GP) {
+		t.Fatalf("expected missing GP in Sync, got %v", err)
+	}
+
+	// Have I serve both "Tenant isolation" and "Audit trail" of GP, and C only select "Tenant isolation" -> missing "Audit trail"!
+	write(t, root, metaOf(I), `{"version": 2, "sources": [{"path": "`+P+`", "uses": ["Invite expiry"]}, {"path": "`+GP+`", "uses": ["Tenant isolation", "Audit trail"]}, {"path": "`+T+`", "uses": ["Vitest as test runner"]}]}`+"\n")
+	sync(t, root, I)
+	write(t, root, metaOf(C), `{"version": 2, "sources": [{"path": "`+I+`", "uses": ["Invite endpoint"]}, {"path": "`+T+`", "uses": ["Vitest as test runner"]}, {"path": "`+P+`", "uses": ["Invite expiry"]}, {"path": "`+GP+`", "uses": ["Tenant isolation"]}]}`+"\n")
+	g = load(t, root)
+	if _, err := g.Sync(g.Node(C), time.Now()); err == nil || !strings.Contains(err.Error(), `omits "Audit trail" in uses`) {
+		t.Fatalf("expected missing title in Sync, got %v", err)
+	}
+
+	// Fix C to select both required rules of GP, sync and approve.
+	write(t, root, metaOf(C), `{"version": 2, "sources": [{"path": "`+I+`", "uses": ["Invite endpoint"]}, {"path": "`+T+`", "uses": ["Vitest as test runner"]}, {"path": "`+P+`", "uses": ["Invite expiry"]}, {"path": "`+GP+`", "uses": ["Tenant isolation", "Audit trail"]}]}`+"\n")
+	sync(t, root, C)
+	approve(t, root, C)
+	git("add", "-A")
+	git("commit", "-q", "-m", "selective-base")
+
+	// Verify first selective sync initialized Reviewed on T, I, P, GP.
+	g = load(t, root)
+	for _, sp := range []string{T, I, P, GP} {
+		if g.Node(sp).Meta.Reviewed != g.Node(sp).Hash {
+			t.Fatalf("%s Reviewed = %q, want %q", sp, g.Node(sp).Meta.Reviewed, g.Node(sp).Hash)
+		}
+	}
+	// Global technical spec T has unselected rule "Snapshot policy", which must NOT generate an unconsumed unit.
+	if len(g.Units()) != 0 {
+		t.Fatalf("expected 0 units when global spec has unselected rule, got %+v", g.Units())
+	}
+
+	// Changing unselected rule "Snapshot policy" on T does NOT make I or C stale, but owes applicability review on T.
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## Adopted patterns\n\n- Hexagonal ports.\n\n## Tests\n\n### Vitest as test runner\n\nTests **must** run on `vitest`.\n\n### Snapshot policy\n\nNever use snapshots.\n")
+	refresh(t, root, T)
+	g = load(t, root)
+	if len(g.Units()) != 0 || has(g.Design(), T) {
+		t.Fatalf("unselected rule change caused stale work: design=%v units=%v", g.Design(), g.Units())
+	}
+	if !g.Node(T).OwesReview() {
+		t.Fatal("expected T to owe applicability review after unselected rule change")
+	}
+	// Close review with preserved scope.
+	closed, err := g.ClassifyReview(g.Node(T), "preserved", nil, time.Now())
+	if err != nil || !closed {
+		t.Fatalf("ClassifyReview preserved = %v, %v", closed, err)
+	}
+	git("add", "-A")
+	git("commit", "-q", "-m", "t-reviewed")
+
+	// Changing ## Adopted patterns on T makes technical consumer I stale (so C waits on I), without creating an unconsumed rule on T.
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## Adopted patterns\n\n- Hexagonal ports.\n- Explicit composition root.\n\n## Tests\n\n### Vitest as test runner\n\nTests **must** run on `vitest`.\n\n### Snapshot policy\n\nNever use snapshots.\n")
+	refresh(t, root, T)
+	g = load(t, root)
+	if !has(g.Design(), "`"+I+"` is stale against `"+T+"`: changed ## Adopted patterns") {
+		t.Fatalf("expected I stale via adopted patterns, got %v", g.Design())
+	}
+	if len(g.Units()) != 0 {
+		t.Fatalf("Adopted patterns change on T should not make C directly stale when C only selects rules: %v", g.Units())
+	}
+	sync(t, root, I)
+}
+
+func TestSelectionReductionExpansionAndSameBodyRenameAuditPreservation(t *testing.T) {
+	root := fixture(t)
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## Tests\n\n### Vitest as test runner\n\nTests **must** run on `vitest`.\n\n### Coverage\n\nCoverage **must** hit 90%.\n")
+	settle(t, root)
+
+	// Gradual migration: C starts integral (audited = 1), then reduces to uses: ["Vitest as test runner"] and approves.
+	g := load(t, root)
+	cm := g.Node(C).Meta
+	for i := range cm.Sources {
+		if cm.Sources[i].Path == T {
+			cm.Sources[i].Uses = []string{"Vitest as test runner"}
+		}
+	}
+	if _, err := Save(g.Node(C), cm); err != nil {
+		t.Fatal(err)
+	}
+	g = load(t, root)
+	if len(g.Units()) != 0 {
+		t.Fatalf("verdict reduction should not create implementation work: %v", g.Units())
+	}
+	approve(t, root, C)
+	g = load(t, root)
+	cMeta := g.Node(C).Meta
+	for _, s := range cMeta.Sources {
+		if s.Path == T {
+			if s.Hash != "" || len(s.Rules) != 1 || s.Rules["Vitest as test runner"] == "" {
+				t.Fatalf("Approve did not prune snapshot or clear hash: %+v", s)
+			}
+		}
+	}
+	// Now removing the unselected rule "Coverage" from T must NOT make C stale!
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## Tests\n\n### Vitest as test runner\n\nTests **must** run on `vitest`.\n")
+	sync(t, root, T)
+	sync(t, root, I)
+	g = load(t, root)
+	if len(g.Units()) != 0 {
+		t.Fatalf("removing unselected rule after Approve prune made C stale: %v", g.Units())
+	}
+
+	// Same-body rename on T: "Vitest as test runner" -> "Vitest runner".
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## Tests\n\n### Vitest runner\n\nTests **must** run on `vitest`.\n")
+	sync(t, root, T)
+	sync(t, root, I)
+	g = load(t, root)
+	// Syncing C before updating uses is refused with rename diagnostic.
+	if _, err := g.Sync(g.Node(C), time.Now()); err == nil || !strings.Contains(err.Error(), `renamed to "Vitest runner"`) {
+		t.Fatalf("expected rename refusal on Sync, got %v", err)
+	}
+	// Update uses on C to "Vitest runner"; Sync must preserve audited (> 0).
+	cm = g.Node(C).Meta
+	for i := range cm.Sources {
+		if cm.Sources[i].Path == T {
+			cm.Sources[i].Uses = []string{"Vitest runner"}
+		}
+	}
+	if _, err := Save(g.Node(C), cm); err != nil {
+		t.Fatal(err)
+	}
+	sync(t, root, C)
+	g = load(t, root)
+	if *g.Node(C).Meta.Audited != 1 {
+		t.Fatalf("same-body rename reset audited: got %d, want 1", *g.Node(C).Meta.Audited)
+	}
+
+	// Transition selective -> integral (uses removed, hash empty) marks C stale and resets audited on Sync.
+	cm = g.Node(C).Meta
+	for i := range cm.Sources {
+		if cm.Sources[i].Path == T {
+			cm.Sources[i].Uses = nil
+		}
+	}
+	if _, err := Save(g.Node(C), cm); err != nil {
+		t.Fatal(err)
+	}
+	g = load(t, root)
+	if len(g.Units()) == 0 {
+		t.Fatal("selective -> integral transition with empty hash must be stale")
+	}
+	// The last selective consumer was removed; --write now advances reviewed.
+	refresh(t, root, T)
+	sync(t, root, C)
+	g = load(t, root)
+	if *g.Node(C).Meta.Audited != 0 {
+		t.Fatalf("selective -> integral transition did not reset audited: got %d", *g.Node(C).Meta.Audited)
+	}
+}
+
+func TestInvalidUsesAndFeatureUnconsumedRules(t *testing.T) {
+	root := fixture(t)
+	settle(t, root)
+
+	// Feature technical spec I gets a second rule "Invite revocation" that C does not select.
+	write(t, root, I, "# Invite\n\nPurpose.\n\n## HTTP\n\n### Invite endpoint\n\n`POST /invites` **must** create one. Serves [Invite expiry](#invite-revocation).\n\n### Invite revocation\n\n`DELETE /invites/:id` **must** revoke one.\n")
+	sync(t, root, I)
+	write(t, root, metaOf(C), `{"version": 2, "sources": [{"path": "`+I+`", "uses": ["Invite endpoint"]}, {"path": "`+T+`"}, {"path": "`+P+`"}]}`+"\n")
+	sync(t, root, C)
+
+	g := load(t, root)
+	units := g.Units()
+	if len(units) != 1 || units[0].Node != g.Node(I) || !strings.Contains(units[0].Reason, `unconsumed rules: "Invite revocation"`) {
+		t.Fatalf("expected unconsumed rule unit on feature spec I, got %+v", units)
+	}
+	// Dossier on C reports unselected rule and #anchor link hint from "Invite endpoint" to "#invite-revocation".
+	dos := g.Dossier(g.Node(C))
+	if len(dos.AnchorHints) == 0 || !strings.Contains(dos.AnchorHints[0], "#invite-revocation") {
+		t.Fatalf("expected #anchor hint in Dossier, got %+v", dos.AnchorHints)
+	}
+
+	// Invalid uses: empty uses [], duplicate, case-mismatch, unknown title.
+	write(t, root, metaOf(C), `{"version": 2, "sources": [{"path": "`+I+`", "uses": []}, {"path": "`+T+`", "uses": ["vitest as test runner"]}, {"path": "`+P+`", "uses": ["Invite expiry", "invite expiry"]}]}`+"\n")
+	g = load(t, root)
+	drift := g.NodeDrift(g.Node(C))
+	for _, want := range []string{
+		"empty uses",
+		`differs in case from "Vitest as test runner"`,
+		"twice in uses",
+	} {
+		if !has(drift, want) {
+			t.Fatalf("drift lacks %q:\n%v", want, drift)
+		}
+	}
+}
+
+func TestApplicabilityReviewCheckpointsResumeInvalidationAndClose(t *testing.T) {
+	root := fixture(t)
+	settle(t, root)
+	git := gitIn(t, root)
+
+	const C2 = "src/backend/invite/revoke.ts"
+	write(t, root, C2, "export const revoke = 1;\n")
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## Adopted patterns\n\n- **Runner:** `vitest`\n\n## Tests\n\n### Vitest as test runner\n\nTests **must** run on `vitest`.\n")
+	refresh(t, root, T)
+	sync(t, root, I)
+	write(t, root, metaOf(C), `{"version": 2, "sources": [{"path": "`+I+`"}, {"path": "`+T+`", "uses": ["Vitest as test runner"]}, {"path": "`+P+`"}]}`+"\n")
+	write(t, root, metaOf(C2), `{"version": 2, "sources": [{"path": "`+I+`"}, {"path": "`+T+`", "uses": ["Vitest as test runner"]}, {"path": "`+P+`"}]}`+"\n")
+	sync(t, root, C)
+	approve(t, root, C)
+	sync(t, root, C2)
+	approve(t, root, C2)
+	git("add", "-A")
+	git("commit", "-q", "-m", "base")
+
+	// Add a new rule to T and change ## Adopted patterns; verify ReviewDiff detects "changed" (not "added") for Adopted.
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## Adopted patterns\n\n- **Runner:** `vitest` v2\n\n## Tests\n\n### Vitest as test runner\n\nTests **must** run on `vitest`.\n\n### Strict mocks\n\nMocks **must** be restored.\n")
+	refresh(t, root, T)
+	g := load(t, root)
+	rdiff := g.ReviewDiff(g.Node(T))
+	if rdiff.Delta.Adopted != "changed" {
+		t.Fatalf("expected ReviewDiff Delta.Adopted == \"changed\", got %q", rdiff.Delta.Adopted)
+	}
+	closed, err := g.ClassifyReview(g.Node(T), "expanded", []string{"src/backend/invite"}, time.Now())
+	if err != nil || closed {
+		t.Fatalf("ClassifyReview expanded = %v, %v", closed, err)
+	}
+
+	// Closing before candidates are judged must fail.
+	if err := g.CloseReview(g.Node(T), time.Now()); err == nil {
+		t.Fatal("CloseReview succeeded with unjudged candidates")
+	}
+
+	// Duplicate uses or invalid reduce (rule not in snapshot) must be rejected by RecordVerdict.
+	if err := g.RecordVerdict(g.Node(T), g.Node(C), "add", []string{"Strict mocks", "Strict mocks"}, ""); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("expected duplicate uses error, got %v", err)
+	}
+	if err := g.RecordVerdict(g.Node(T), g.Node(C), "reduce", []string{"Strict mocks"}, ""); err == nil || !strings.Contains(err.Error(), "does not currently select") {
+		t.Fatalf("expected reduce validation error, got %v", err)
+	}
+
+	// Judge C with "add" (adding "Strict mocks") and C2 with "keep" (omitting uses -> preserves existing selective uses).
+	if err := g.RecordVerdict(g.Node(T), g.Node(C), "add", []string{"Vitest as test runner", "Strict mocks"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.RecordVerdict(g.Node(T), g.Node(C2), "keep", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	// Closing before --apply on C must fail because "add" is not yet applied on disk.
+	if err := g.CloseReview(g.Node(T), time.Now()); err == nil || !strings.Contains(err.Error(), "not applied") {
+		t.Fatalf("expected unapplied error, got %v", err)
+	}
+	// Apply both candidates idempotently (calling ApplyReviewCandidate twice must be a no-op the second time).
+	if err := g.ApplyReviewCandidate(g.Node(T), g.Node(C), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.ApplyReviewCandidate(g.Node(T), g.Node(C), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.ApplyReviewCandidate(g.Node(T), g.Node(C2), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// Approving C2 after --apply must NOT invalidate C2's LinksHash!
+	approve(t, root, C2)
+	g = load(t, root)
+	if st := g.ReviewState(g.Node(T)); st.Resolved != 2 || st.Total != 2 {
+		t.Fatalf("expected 2/2 resolved after approve on C2, got %d/%d (%+v)", st.Resolved, st.Total, st.Candidates)
+	}
+
+	// Modify C2's file content after judgment -> invalidates ONLY C2, preserving C's judgment!
+	write(t, root, C2, "export const revoke = 2;\n")
+	refresh(t, root, C2)
+	g = load(t, root)
+	st := g.ReviewState(g.Node(T))
+	if st.Resolved != 1 || st.Total != 2 {
+		t.Fatalf("expected 1/2 resolved after C2 modification, got %d/%d", st.Resolved, st.Total)
+	}
+	// Because C2 changed, CloseReview must refuse naming C2!
+	if err := g.CloseReview(g.Node(T), time.Now()); err == nil || !strings.Contains(err.Error(), C2) {
+		t.Fatalf("expected CloseReview refusal for modified C2, got %v", err)
+	}
+	// Re-judge and apply C2.
+	if err := g.RecordVerdict(g.Node(T), g.Node(C2), "keep", []string{"Vitest as test runner"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.ApplyReviewCandidate(g.Node(T), g.Node(C2), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	// New candidate file created under expanded path src/backend/invite enters the queue automatically on resume!
+	const C3 = "src/backend/invite/extra.ts"
+	write(t, root, C3, "export const extra = 1;\n")
+	write(t, root, metaOf(C3), `{"version": 2, "sources": [{"path": "`+I+`"}, {"path": "`+P+`"}]}`+"\n")
+	refresh(t, root, C3)
+	g = load(t, root)
+	st = g.ReviewState(g.Node(T))
+	if st.Total != 3 || st.Resolved != 2 {
+		t.Fatalf("expected new file C3 in expanded scope to enter queue (2/3 resolved), got %d/%d", st.Resolved, st.Total)
+	}
+	// Reject keep on C3 since C3 does not list T.
+	if err := g.RecordVerdict(g.Node(T), g.Node(C3), "keep", nil, ""); err == nil {
+		t.Fatal("expected keep on unlinked candidate C3 to fail")
+	}
+	// Judge C3 as exclude, then remove C3 leaving orphan metadata first -> RemovedClean is false until metadata is removed.
+	if err := g.RecordVerdict(g.Node(T), g.Node(C3), "exclude", nil, "not a test file"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.ApplyReviewCandidate(g.Node(T), g.Node(C3), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(filepath.Join(root, filepath.FromSlash(C3)))
+	g = load(t, root)
+	if err := g.CloseReview(g.Node(T), time.Now()); err == nil || !strings.Contains(err.Error(), "orphan metadata") {
+		t.Fatalf("expected CloseReview refusal for removed candidate with orphan metadata, got %v", err)
+	}
+	os.Remove(filepath.Join(root, filepath.FromSlash(metaOf(C3))))
+
+	// Case 14: Edit T again during open review (modifying "Strict mocks" while keeping "Vitest as test runner" identical).
+	// Re-classifying with --scope preserved must keep Scope == "expanded" and reuse C2's judgment while invalidating C's judgment!
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## Adopted patterns\n\n- **Runner:** `vitest` v2\n\n## Tests\n\n### Vitest as test runner\n\nTests **must** run on `vitest`.\n\n### Strict mocks\n\nMocks **must** be restored after every test.\n")
+	refresh(t, root, T)
+	g = load(t, root)
+	if !g.ReviewState(g.Node(T)).SourceStale {
+		t.Fatal("expected SourceStale after editing T during open review")
+	}
+	if err := g.CloseReview(g.Node(T), time.Now()); err == nil || !strings.Contains(err.Error(), "changed since its review checkpoint") {
+		t.Fatalf("expected CloseReview refusal on stale source checkpoint, got %v", err)
+	}
+	if closed, err := g.ClassifyReview(g.Node(T), "preserved", nil, time.Now()); err != nil || closed {
+		t.Fatalf("re-classify preserved on open checkpoint = %v, %v", closed, err)
+	}
+	st = g.ReviewState(g.Node(T))
+	if st.Scope != "expanded" {
+		t.Fatalf("expected Scope to remain expanded after preserved reclassification, got %q", st.Scope)
+	}
+	// Both C and C2 had JudgedRules["Strict mocks"] == oldHash, so changing "Strict mocks" invalidates judgments from the first round; re-judge and apply both.
+	if err := g.RecordVerdict(g.Node(T), g.Node(C), "add", []string{"Vitest as test runner", "Strict mocks"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.ApplyReviewCandidate(g.Node(T), g.Node(C), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.RecordVerdict(g.Node(T), g.Node(C2), "keep", []string{"Vitest as test runner"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.ApplyReviewCandidate(g.Node(T), g.Node(C2), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.CloseReview(g.Node(T), time.Now()); err != nil {
+		t.Fatalf("CloseReview failed: %v", err)
+	}
+	// Checkpoint file must be removed and T.Meta.Reviewed updated.
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(meta.ReviewRel(T)))); !os.IsNotExist(err) {
+		t.Fatalf("checkpoint file was not removed on CloseReview: %v", err)
+	}
+	g = load(t, root)
+	if g.Node(T).OwesReview() || g.Node(T).Meta.Reviewed != g.Node(T).Hash {
+		t.Fatalf("T still owes review after CloseReview")
+	}
+	// C now has "Strict mocks" added to uses, so C is an /sdd-implement unit while C2 is untouched!
+	units := g.Units()
+	if len(units) != 1 || len(units[0].Nodes) != 1 || units[0].Nodes[0].Node.Rel != C {
+		t.Fatalf("expected only C in Units after review added rule to C, got %+v", units)
+	}
+
+	// Case 2 & 13: Perspective spec applicability review (Owner == "/sdd-spec"), block when technical support is missing,
+	// and invalidation when technical support changes.
+	write(t, root, metaOf(I), `{"version": 2, "sources": [{"path": "`+P+`", "uses": ["Invite expiry"]}, {"path": "`+T+`", "uses": ["Vitest as test runner"]}]}`+"\n")
+	write(t, root, metaOf(C), `{"version": 2, "sources": [{"path": "`+I+`"}, {"path": "`+T+`", "uses": ["Vitest as test runner", "Strict mocks"]}, {"path": "`+P+`", "uses": ["Invite expiry"]}]}`+"\n")
+	write(t, root, metaOf(C2), `{"version": 2, "sources": [{"path": "`+I+`"}, {"path": "`+T+`", "uses": ["Vitest as test runner"]}, {"path": "`+P+`", "uses": ["Invite expiry"]}]}`+"\n")
+	sync(t, root, I)
+	sync(t, root, C)
+	approve(t, root, C)
+	sync(t, root, C2)
+	approve(t, root, C2)
+	git("add", "-A")
+	git("commit", "-q", "-m", "selective-persp")
+
+	write(t, root, P, "# Invite\n\nPurpose.\n\n## Lifecycle\n\n### Invite expiry\n\nInvites **must** expire in 7 days.\n\n### Invite quota\n\nEach workspace **must** cap invites at 50.\n")
+	refresh(t, root, P)
+	g = load(t, root)
+	pst := g.ReviewState(g.Node(P))
+	if pst.Owner != "/sdd-spec" {
+		t.Fatalf("expected perspective review owner /sdd-spec, got %q", pst.Owner)
+	}
+	if _, err := g.ClassifyReview(g.Node(P), "expanded", []string{I, "src/backend/invite"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// Attempting to add "Invite quota" to code C before technical spec I serves "Invite quota" must be refused!
+	if err := g.RecordVerdict(g.Node(P), g.Node(C), "add", []string{"Invite expiry", "Invite quota"}, ""); err == nil || !strings.Contains(err.Error(), "record --verdict block") {
+		t.Fatalf("expected missing technical support error on C, got %v", err)
+	}
+	// Record block on C -> review cannot close while blocked.
+	if err := g.RecordVerdict(g.Node(P), g.Node(C), "block", nil, "I does not serve Invite quota yet"); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.RecordVerdict(g.Node(P), g.Node(C2), "keep", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.ApplyReviewCandidate(g.Node(P), g.Node(C2), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.CloseReview(g.Node(P), time.Now()); err == nil {
+		t.Fatal("expected CloseReview to fail while I is unjudged and C is blocked")
+	}
+	// Now /sdd-design judges technical candidate I with "add" ("Invite expiry", "Invite quota"), applies, and syncs I.
+	if err := g.RecordVerdict(g.Node(P), g.Node(I), "add", []string{"Invite expiry", "Invite quota"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.ApplyReviewCandidate(g.Node(P), g.Node(I), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	sync(t, root, I)
+	// Syncing I must NOT invalidate I's LinksHash, and changing I's perspective coverage invalidates C2's support hash!
+	g = load(t, root)
+	pst = g.ReviewState(g.Node(P))
+	for _, cs := range pst.Candidates {
+		if cs.Candidate.Path == I && !cs.Applied {
+			t.Fatalf("expected I to remain applied after sync(I), got %+v", cs)
+		}
+		if cs.Candidate.Path == C2 && cs.VerdictValid {
+			t.Fatalf("expected C2 verdict to be invalidated when technical support for P changed")
+		}
+	}
+	// Re-judge C and C2 now that technical spec I serves "Invite quota", apply, and close P's review.
+	if err := g.RecordVerdict(g.Node(P), g.Node(C), "add", []string{"Invite expiry", "Invite quota"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.ApplyReviewCandidate(g.Node(P), g.Node(C), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.RecordVerdict(g.Node(P), g.Node(C2), "add", []string{"Invite expiry", "Invite quota"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.ApplyReviewCandidate(g.Node(P), g.Node(C2), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.CloseReview(g.Node(P), time.Now()); err != nil {
+		t.Fatalf("CloseReview on P failed: %v", err)
+	}
+
+	// Corrupt checkpoint in .sdd/reviews/ is reported as drift by Drift() and Staged().
+	write(t, root, ".sdd/reviews/bad.json", "{corrupt\n")
+	git("add", ".sdd/reviews/bad.json")
+	g = load(t, root)
+	if !has(g.Drift(), "`.sdd/reviews/bad.json`") {
+		t.Fatalf("expected corrupt checkpoint in Drift, got %v", g.Drift())
+	}
+	_, unc, err := g.Staged()
+	if err != nil || !has(unc, "`.sdd/reviews/bad.json`") {
+		t.Fatalf("expected corrupt checkpoint in Staged, got %v (err=%v)", unc, err)
+	}
+}
+
+func TestScale5000Consumers50Selective(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping 5,000-file scale test in -short mode")
+	}
+	const (
+		totalFiles    = 5000
+		selectedFiles = 50
+	)
+	root := fixture(t)
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## Tests\n\n### Rule A\n\nRule A body v1.\n\n### Rule B\n\nRule B body v1.\n")
+	refresh(t, root, T)
+	write(t, root, metaOf(I), `{"version": 2, "sources": [{"path": "`+P+`"}, {"path": "`+T+`", "uses": ["Rule B"]}]}`+"\n")
+	sync(t, root, P)
+	sync(t, root, I)
+	os.Remove(filepath.Join(root, filepath.FromSlash(C)))
+	os.Remove(filepath.Join(root, filepath.FromSlash(metaOf(C))))
+
+	g := load(t, root)
+	tNode := g.Node(T)
+	iNode := g.Node(I)
+	pNode := g.Node(P)
+	ruleAHash := tNode.Rules["Rule A"]
+	ruleBHash := tNode.Rules["Rule B"]
+	iRulesJSON := fmt.Sprintf(`{"Invite endpoint": %q}`, iNode.Rules["Invite endpoint"])
+	pRulesJSON := fmt.Sprintf(`{"Invite expiry": %q, "Single use": %q}`, pNode.Rules["Invite expiry"], pNode.Rules["Single use"])
+	codeBody := []byte("export const x = 1;\n")
+	codeBodySum := meta.Sum(codeBody)
+	stamp := "2026-04-06T00:00:00Z"
+
+	for idx := 0; idx < totalFiles; idx++ {
+		base := fmt.Sprintf("f%04d.ts", idx)
+		rel := fmt.Sprintf("src/backend/m%02d/%s", idx/100, base)
+		codeHash := meta.Sum([]byte(fmt.Sprintf("%s\x00%s\n", base, codeBodySum)))
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, codeBody, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		useRule, useHash := "Rule B", ruleBHash
+		if idx < selectedFiles {
+			useRule, useHash = "Rule A", ruleAHash
+		}
+		mJSON := fmt.Sprintf(
+			"{\n  \"version\": 2,\n  \"modified\": %q,\n  \"audited\": 1,\n  \"algorithm\": \"sha256\",\n  \"hash\": %q,\n  \"sources\": [\n    {\n      \"path\": %q,\n      \"hash\": %q,\n      \"rules\": %s\n    },\n    {\n      \"path\": %q,\n      \"hash\": %q,\n      \"rules\": %s\n    },\n    {\n      \"path\": %q,\n      \"rules\": {\n        %q: %q\n      },\n      \"uses\": [\n        %q\n      ]\n    }\n  ]\n}\n",
+			stamp, codeHash,
+			I, iNode.Hash, iRulesJSON,
+			P, pNode.Hash, pRulesJSON,
+			T, useRule, useHash, useRule,
+		)
+		if err := os.WriteFile(abs+meta.Suffix, []byte(mJSON), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Initialize Reviewed on T and commit specs in git.
+	write(t, root, metaOf(T), fmt.Sprintf("{\n  \"version\": 2,\n  \"modified\": %q,\n  \"algorithm\": \"sha256\",\n  \"hash\": %q,\n  \"reviewed\": %q,\n  \"rules\": {\n    \"Rule A\": %q,\n    \"Rule B\": %q\n  }\n}\n", stamp, tNode.Hash, tNode.Hash, ruleAHash, ruleBHash))
+	git := gitIn(t, root)
+	git("add", T, metaOf(T), I, metaOf(I), P, metaOf(P))
+	git("commit", "-q", "-m", "scale-5000")
+	unchanged := map[string]string{}
+	for idx := selectedFiles; idx < totalFiles; idx++ {
+		p := filepath.Join(root, filepath.FromSlash(fmt.Sprintf("src/backend/m%02d/f%04d.ts%s", idx/100, idx, meta.Suffix)))
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		unchanged[p] = string(b)
+	}
+
+	// Modify Rule A (selected by only 50 of the 5,000 files).
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## Tests\n\n### Rule A\n\nRule A body v2.\n\n### Rule B\n\nRule B body v1.\n")
+	refresh(t, root, T)
+
+	start := time.Now()
+	g = load(t, root)
+	units := g.Units()
+	elapsed := time.Since(start)
+
+	pendingNodes := 0
+	for _, u := range units {
+		pendingNodes += len(u.Nodes)
+	}
+	if pendingNodes != selectedFiles {
+		t.Fatalf("expected exactly %d pending code nodes, got %d", selectedFiles, pendingNodes)
+	}
+	// Classify review as preserved and verify it closes immediately without touching the 4,950 unselected files.
+	closed, err := g.ClassifyReview(g.Node(T), "preserved", nil, time.Now())
+	if err != nil || !closed {
+		t.Fatalf("ClassifyReview preserved = %v, %v", closed, err)
+	}
+	git("add", T, metaOf(T))
+	nodes, unc, err := g.Staged()
+	if err != nil || len(unc) > 0 {
+		t.Fatalf("staged: %v %v", err, unc)
+	}
+	for _, n := range nodes {
+		m, err := Refresh(n, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Save(n, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for p, before := range unchanged {
+		after, err := os.ReadFile(p)
+		if err != nil || string(after) != before {
+			t.Fatalf("unselected consumer metadata modified: %s (%v)", p, err)
+		}
+	}
+	t.Logf("5,000-file selective impact computed in %v: %d pending nodes, 4,950 untouched", elapsed, pendingNodes)
+}
+
+func BenchmarkScale5000IntegralVsSelective(b *testing.B) {
+	const (
+		totalFiles    = 5000
+		selectedFiles = 50
+	)
+	setup := func(selective bool) string {
+		root := b.TempDir()
+		if out, err := exec.Command("git", "init", "-q", root).CombinedOutput(); err != nil {
+			b.Fatalf("git init: %v %s", err, out)
+		}
+		for _, kv := range [][2]string{{"gc.auto", "0"}, {"maintenance.auto", "false"}, {"core.fsmonitor", "false"}} {
+			exec.Command("git", "-C", root, "config", kv[0], kv[1]).Run()
+		}
+		writeB := func(rel, text string) {
+			p := filepath.Join(root, filepath.FromSlash(rel))
+			os.MkdirAll(filepath.Dir(p), 0o755)
+			os.WriteFile(p, []byte(text), 0o644)
+		}
+		writeB("AGENTS.md", "# Root\n")
+		writeB(".sdd/.sdd-config.json", `{"version": 0, "paths": {"specs": "specs", "src": "src", "technical": "src/specs"}}`+"\n")
+		writeB("specs/AGENTS.md", "# Perspectives\n")
+		writeB("src/AGENTS.md", "# Source\n")
+		writeB("specs/business/AGENTS.md", "# Business\n")
+		writeB(P, pSpec)
+		writeB(T, "# Toolchain\n\nPurpose.\n\n## Tests\n\n### Rule A\n\nRule A body v1.\n\n### Rule B\n\nRule B body v1.\n")
+		writeB(metaOf(T), `{"version": 2}`+"\n")
+		writeB(I, "# Invite\n\nPurpose.\n\n## HTTP\n\n### Invite endpoint\n\n`POST /invites` **must** create one.\n")
+		writeB(metaOf(I), `{"version": 2, "sources": [{"path": "`+P+`"}, {"path": "`+T+`", "uses": ["Rule B"]}]}`+"\n")
+		for _, s := range []string{P, T, I} {
+			g, _ := Load(root)
+			var m *meta.Metadata
+			if s == I {
+				m, _ = g.Sync(g.Node(s), time.Unix(0, 0))
+			} else {
+				m, _ = Refresh(g.Node(s), time.Unix(0, 0))
+			}
+			Save(g.Node(s), m)
+		}
+		g, _ := Load(root)
+		tNode, iNode, pNode := g.Node(T), g.Node(I), g.Node(P)
+		ruleAHash, ruleBHash := tNode.Rules["Rule A"], tNode.Rules["Rule B"]
+		iRulesJSON := fmt.Sprintf(`{"Invite endpoint": %q}`, iNode.Rules["Invite endpoint"])
+		pRulesJSON := fmt.Sprintf(`{"Invite expiry": %q, "Single use": %q}`, pNode.Rules["Invite expiry"], pNode.Rules["Single use"])
+		tFullRulesJSON := fmt.Sprintf(`{"Rule A": %q, "Rule B": %q}`, ruleAHash, ruleBHash)
+		codeBody := []byte("export const x = 1;\n")
+		codeBodySum := meta.Sum(codeBody)
+		stamp := "2026-04-06T00:00:00Z"
+		for idx := 0; idx < totalFiles; idx++ {
+			base := fmt.Sprintf("f%04d.ts", idx)
+			rel := fmt.Sprintf("src/backend/m%02d/%s", idx/100, base)
+			codeHash := meta.Sum([]byte(fmt.Sprintf("%s\x00%s\n", base, codeBodySum)))
+			abs := filepath.Join(root, filepath.FromSlash(rel))
+			os.MkdirAll(filepath.Dir(abs), 0o755)
+			os.WriteFile(abs, codeBody, 0o644)
+			var tSourceJSON string
+			if selective {
+				useRule, useHash := "Rule B", ruleBHash
+				if idx < selectedFiles {
+					useRule, useHash = "Rule A", ruleAHash
+				}
+				tSourceJSON = fmt.Sprintf(`{"path": %q, "rules": {%q: %q}, "uses": [%q]}`, T, useRule, useHash, useRule)
+			} else {
+				tSourceJSON = fmt.Sprintf(`{"path": %q, "hash": %q, "rules": %s}`, T, tNode.Hash, tFullRulesJSON)
+			}
+			mJSON := fmt.Sprintf(
+				"{\"version\": 2, \"modified\": %q, \"audited\": 1, \"algorithm\": \"sha256\", \"hash\": %q, \"sources\": [{\"path\": %q, \"hash\": %q, \"rules\": %s}, {\"path\": %q, \"hash\": %q, \"rules\": %s}, %s]}\n",
+				stamp, codeHash, I, iNode.Hash, iRulesJSON, P, pNode.Hash, pRulesJSON, tSourceJSON,
+			)
+			os.WriteFile(abs+meta.Suffix, []byte(mJSON), 0o644)
+		}
+		writeB(T, "# Toolchain\n\nPurpose.\n\n## Tests\n\n### Rule A\n\nRule A body v2.\n\n### Rule B\n\nRule B body v1.\n")
+		g, _ = Load(root)
+		m, _ := Refresh(g.Node(T), time.Unix(0, 0))
+		Save(g.Node(T), m)
+		return root
+	}
+
+	b.Run("Integral5000", func(b *testing.B) {
+		root := setup(false)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			g, err := Load(root)
+			if err != nil {
+				b.Fatal(err)
+			}
+			units := g.Units()
+			n := 0
+			for _, u := range units {
+				n += len(u.Nodes)
+			}
+			if n != totalFiles {
+				b.Fatalf("got %d pending, want %d", n, totalFiles)
+			}
+		}
+	})
+	b.Run("Selective50Of5000", func(b *testing.B) {
+		root := setup(true)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			g, err := Load(root)
+			if err != nil {
+				b.Fatal(err)
+			}
+			units := g.Units()
+			n := 0
+			for _, u := range units {
+				n += len(u.Nodes)
+			}
+			if n != selectedFiles {
+				b.Fatalf("got %d pending, want %d", n, selectedFiles)
+			}
+		}
+	})
 }

@@ -154,3 +154,60 @@ func TestEncodeKeepsAuditedZeroBetweenModifiedAndRules(t *testing.T) {
 		t.Fatalf("audited not read: %v %+v", err, m)
 	}
 }
+
+func TestDiffSelectiveAdoptedAndReviewCheckpoints(t *testing.T) {
+	now := map[string]string{"Kept": "k", "Changed": "c2", "New": "n", "Renamed new": "r", "Unselected": "u"}
+	order := []string{"Kept", "Changed", "New", "Renamed new", "Unselected"}
+	// Unselected changes and verdict reductions (snapshot still in now) are ignored.
+	then := map[string]string{"Kept": "k", "Unselected": "u_old"}
+	if d := DiffSelective(then, []string{"Kept"}, now, order, "", ""); !d.Empty() {
+		t.Fatalf("expected empty selective delta, got %+v", d)
+	}
+	// Rename detected against full catalog before uses is updated.
+	thenRename := map[string]string{"Kept": "k", "Renamed old": "r"}
+	d := DiffSelective(thenRename, []string{"Kept", "Renamed old"}, now, order, "", "")
+	if !reflect.DeepEqual(d.Renamed, [][2]string{{"Renamed old", "Renamed new"}}) || len(d.Removed) != 0 {
+		t.Fatalf("rename before uses update: %+v", d)
+	}
+	// Rename detected after uses is updated while snapshot still holds old title.
+	d2 := DiffSelective(thenRename, []string{"Kept", "Renamed new"}, now, order, "", "")
+	if !reflect.DeepEqual(d2.Renamed, [][2]string{{"Renamed old", "Renamed new"}}) || len(d2.Added) != 0 {
+		t.Fatalf("rename after uses update: %+v", d2)
+	}
+	// Adopted patterns delta.
+	d3 := DiffSelective(map[string]string{"Kept": "k"}, []string{"Kept"}, now, order, "a1", "a2")
+	if d3.Empty() || d3.Adopted != "changed" || d3.String() != "changed ## Adopted patterns" {
+		t.Fatalf("adopted delta: %+v (%s)", d3, d3.String())
+	}
+	// Atomic review checkpoint write, concurrency detection, and removal.
+	root := t.TempDir()
+	r := &Review{
+		Version: ReviewVersion,
+		Source:  "src/specs/code-guide/spec.md",
+		Hash:    "h1",
+		Scope:   "expanded",
+		Rules:   map[string]string{"Kept": "k"},
+		Candidates: []ReviewCandidate{
+			{Path: "src/b.ts", Kind: "code", Verdict: "exclude", Reason: "does not apply"},
+			{Path: "src/a.ts", Kind: "code", Verdict: "keep", Uses: []string{"Kept"}},
+		},
+	}
+	if err := WriteReviewAtomic(root, r); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := ReadReview(filepath.Join(root, filepath.FromSlash(ReviewRel(r.Source))))
+	if err != nil || loaded.Candidates[0].Path != "src/a.ts" {
+		t.Fatalf("ReadReview = %+v %v", loaded, err)
+	}
+	stale := *loaded
+	stale.RawSum = "wrong"
+	if err := WriteReviewAtomic(root, &stale); err == nil || !strings.Contains(err.Error(), "changed concurrently") {
+		t.Fatalf("expected concurrent modification error, got %v", err)
+	}
+	if err := RemoveReview(root, r.Source, loaded.RawSum); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ReviewsDir)); !os.IsNotExist(err) {
+		t.Fatalf("ReviewsDir not cleaned up: %v", err)
+	}
+}

@@ -2,15 +2,14 @@ package graph
 
 import (
 	"fmt"
-	"os"
+	"net/url"
 	"path"
-	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
 	"tools/internal/md"
-	"tools/internal/meta"
 )
 
 // AuditState is where a code node stands against the audit of its sources:
@@ -92,6 +91,26 @@ func (c Candidate) Tier() int {
 	return 3
 }
 
+// ListedSpec describes a technical or perspective spec a code node lists,
+// including which rules are selected via uses and which remain unselected.
+type ListedSpec struct {
+	Node       *Node
+	Selective  bool
+	Selected   []string // in spec Order
+	Unselected []string // in spec Order
+}
+
+// ReviewNote summarizes an open applicability review targeting a code node.
+type ReviewNote struct {
+	Source  string
+	Rules   []string
+	Verdict string
+	Uses    []string
+	Reason  string
+	Valid   bool
+	Applied bool
+}
+
 // Dossier is what a judge needs about one code node. A served perspective the
 // node misses is an /sdd-implement unit, not judged, so only drops are listed.
 type Dossier struct {
@@ -100,8 +119,12 @@ type Dossier struct {
 	Links            map[string][]string // directory node: each linked file with the sources it is linked to
 	Technical        []*Node             // listed technical specs with a valid edge, by path
 	Perspectives     []*Node             // listed perspective specs with a valid edge, by path
+	ListedTechnical  []ListedSpec        // listed technical specs with selected/unselected rules
+	ListedPersp      []ListedSpec        // listed perspective specs with selected/unselected rules
+	AnchorHints      []string            // #anchor links from selected rules to unselected rules
 	Candidates       []Candidate         // technical specs not listed, tier then path
-	DropPerspectives []string            // perspective nodes listed that no listed technical spec serves
+	DropPerspectives []string            // perspective nodes or rules listed that no listed technical spec serves
+	Reviews          []ReviewNote        // active applicability reviews targeting this code node
 }
 
 // Dossier gathers what a judge needs about code node n.
@@ -110,30 +133,48 @@ func (g *Graph) Dossier(n *Node) Dossier {
 	if n.IsDir && n.Meta != nil {
 		d.Links = cloneFiles(n.Meta.Files)
 	}
-	listed := map[*Node]bool{}
+	listed := map[*Node]*Edge{}
 	for _, e := range sortedEdges(n.Sources) {
-		if !e.Valid() || listed[e.To] {
+		if !e.Valid() || listed[e.To] != nil {
 			continue
 		}
-		listed[e.To] = true
+		listed[e.To] = e
+		useSet := map[string]bool{}
+		for _, u := range e.Source.Uses {
+			useSet[u] = true
+		}
+		ls := ListedSpec{Node: e.To, Selective: e.Selective()}
+		if e.Selective() {
+			for _, t := range e.To.Order {
+				if useSet[t] {
+					ls.Selected = append(ls.Selected, t)
+				} else {
+					ls.Unselected = append(ls.Unselected, t)
+				}
+			}
+		} else {
+			ls.Selected = append([]string(nil), e.To.Order...)
+		}
 		switch e.To.Kind {
 		case Technical:
 			d.Technical = append(d.Technical, e.To)
+			d.ListedTechnical = append(d.ListedTechnical, ls)
 		case Perspective:
 			d.Perspectives = append(d.Perspectives, e.To)
+			d.ListedPersp = append(d.ListedPersp, ls)
 		}
 	}
+	d.AnchorHints = g.anchorHints(n, listed)
 	var linked []string
 	if n.IsDir {
 		linked = d.Files
 	}
 	names := namesRe(n.Rel, g.Paths.Src, linked...)
 	for _, t := range g.Nodes {
-		if t.Kind != Technical || listed[t] || !t.HasFile {
+		if t.Kind != Technical || listed[t] != nil || !t.HasFile {
 			continue
 		}
-		text, _ := os.ReadFile(filepath.Join(t.Dir, meta.SpecFile))
-		d.Candidates = append(d.Candidates, Candidate{Node: t, Names: names.Match(text), Global: g.global(t), Purpose: purpose(string(text))})
+		d.Candidates = append(d.Candidates, Candidate{Node: t, Names: names.MatchString(t.text), Global: g.global(t), Purpose: t.Purpose})
 	}
 	sort.SliceStable(d.Candidates, func(i, j int) bool {
 		a, b := d.Candidates[i], d.Candidates[j]
@@ -142,11 +183,80 @@ func (g *Graph) Dossier(n *Node) Dossier {
 		}
 		return a.Node.Rel < b.Node.Rel
 	})
-	for _, p := range g.unserved(n) {
-		d.DropPerspectives = append(d.DropPerspectives, fmt.Sprintf("`%s` (none of its technical specs serves it)", p.Rel))
+	for _, u := range g.unservedCov(n) {
+		d.DropPerspectives = append(d.DropPerspectives, u.drop)
 	}
 	sort.Strings(d.DropPerspectives)
+	d.Reviews = g.reviewNotesFor(n)
 	return d
+}
+
+func (g *Graph) anchorHints(n *Node, listed map[*Node]*Edge) []string {
+	var hints []string
+	seen := map[string]bool{}
+	for _, e := range sortedEdges(n.Sources) {
+		if !e.Valid() || !e.Selective() || e.To.ruleLinks == nil {
+			continue
+		}
+		useSet := map[string]bool{}
+		for _, u := range e.Source.Uses {
+			useSet[u] = true
+		}
+		for _, u := range e.To.Order {
+			if !useSet[u] {
+				continue
+			}
+			for _, raw := range e.To.ruleLinks[u] {
+				filePart, anchor, ok := strings.Cut(raw, "#")
+				if !ok || anchor == "" {
+					continue
+				}
+				filePart, _, _ = strings.Cut(filePart, "?")
+				if t, err := url.PathUnescape(filePart); err == nil {
+					filePart = t
+				}
+				if f, err := url.PathUnescape(anchor); err == nil {
+					anchor = f
+				}
+				targetSpec := e.To
+				if filePart != "" {
+					var rel string
+					if strings.HasPrefix(filePart, "/") {
+						rel = cleanRel(strings.TrimLeft(filePart, "/"))
+					} else {
+						rel = cleanRel(path.Join(path.Dir(e.To.Rel), filePart))
+					}
+					targetSpec = g.byRel[rel]
+					if targetSpec == nil {
+						targetSpec = g.byRel[cleanRel(filePart)]
+					}
+					if targetSpec == nil || !targetSpec.spec() {
+						continue
+					}
+				}
+				targetTitle := targetSpec.slugToRule[md.Slug(anchor)]
+				if targetTitle == "" {
+					continue
+				}
+				if te := listed[targetSpec]; te != nil {
+					if !te.Selective() || slices.Contains(te.Source.Uses, targetTitle) {
+						continue
+					}
+				}
+				var msg string
+				if targetSpec == e.To {
+					msg = fmt.Sprintf("`%s` %q links to unselected `#%s` (%q)", e.To.Rel, u, anchor, targetTitle)
+				} else {
+					msg = fmt.Sprintf("`%s` %q links to `%s#%s` (%q, unselected)", e.To.Rel, u, targetSpec.Rel, anchor, targetTitle)
+				}
+				if !seen[msg] {
+					seen[msg] = true
+					hints = append(hints, msg)
+				}
+			}
+		}
+	}
+	return hints
 }
 
 // global reports whether technical node t serves no perspective node: a

@@ -67,25 +67,34 @@ func allowed(k Kind) string {
 // directory under the code root whose .metadata.json links the files of the
 // directory that are not code (a directory node).
 type Node struct {
-	Rel      string // root-relative path: the file, or the directory of a directory node
-	Dir      string // absolute directory holding the node
-	MetaRel  string // root-relative metadata file
-	MetaPath string // absolute metadata file
-	Kind     Kind
-	IsDir    bool // a directory node
-	HasFile  bool // a file node whose file exists; false on orphan metadata
-	HasMeta  bool
-	Meta     *meta.Metadata // nil when absent or unreadable
-	MetaErr  error
-	Hash     string            // current node hash
-	Rules    map[string]string // current rule hashes; nil without a spec
-	Order    []string          // rule titles in file order
-	RuleErr  error
-	Sources  []*Edge // one per Meta.Sources entry, in order
-	content  []string
-	linkErrs []finding // what is wrong with files of a directory node
-	refErrs  []string  // links of a spec that name no file or no heading
-	text     string    // the spec file, read for its rules and links
+	Rel             string // root-relative path: the file, or the directory of a directory node
+	Dir             string // absolute directory holding the node
+	MetaRel         string // root-relative metadata file
+	MetaPath        string // absolute metadata file
+	Kind            Kind
+	IsDir           bool // a directory node
+	HasFile         bool // a file node whose file exists; false on orphan metadata
+	HasMeta         bool
+	Meta            *meta.Metadata // nil when absent or unreadable
+	MetaErr         error
+	Hash            string            // current node hash
+	Adopted         string            // current ## Adopted patterns hash; technical specs only
+	Purpose         string            // first paragraph after # title; specs only
+	Rules           map[string]string // current rule hashes; nil without a spec
+	Order           []string          // rule titles in file order
+	RuleErr         error
+	Sources         []*Edge // one per Meta.Sources entry, in order
+	content         []string
+	linkErrs        []finding           // what is wrong with files of a directory node
+	refErrs         []string            // links of a spec that name no file or no heading
+	text            string              // the spec file, read once in Load
+	ruleLinks       map[string][]string // rule title -> link targets in its body
+	slugToRule      map[string]string   // anchor slug -> ### rule title
+	selective       bool                // whether any valid edge to this spec uses selective rules
+	syncedSelective bool                // whether any valid selective edge has recorded rules and empty hash
+	review          *meta.Review        // open applicability-review checkpoint, if any
+	reviewInvalid   string              // raw checksum of a checkpoint whose evidence was lost
+	g               *Graph
 }
 
 // Files lists the node's content, names relative to its directory, sorted:
@@ -131,28 +140,74 @@ func (e *Edge) Valid() bool {
 	return e.To != nil && e.To != e.From && e.From.Kind.MaySource(e.To.Kind)
 }
 
-// Stale reports whether the source's current hash differs from the one
-// recorded at the last sync.
-func (e *Edge) Stale() bool { return e.Valid() && e.Source.Hash != e.To.Hash }
+// Selective reports whether the edge selects specific rule titles via uses.
+func (e *Edge) Selective() bool { return len(e.Source.Uses) > 0 }
+
+// Stale reports whether the edge owes work: in selective mode when its
+// filtered delta is non-empty; in integral mode when the source hash, full
+// rule catalog, or technical Adopted patterns hash differs from the snapshot.
+func (e *Edge) Stale() bool {
+	if !e.Valid() {
+		return false
+	}
+	if e.Selective() {
+		return !e.Delta.Empty()
+	}
+	if e.From.Kind == Technical && e.To.Kind == Technical && e.Source.Adopted != e.To.Adopted {
+		return true
+	}
+	return e.Source.Hash != e.To.Hash || !maps.Equal(e.Source.Rules, e.To.Rules)
+}
+
+// computeDelta updates e.Delta according to its mode (selective or integral).
+func (e *Edge) computeDelta() {
+	if !e.Valid() {
+		e.Delta = meta.Delta{}
+		return
+	}
+	var oldAdopted, newAdopted string
+	if e.From.Kind == Technical && e.To.Kind == Technical {
+		oldAdopted, newAdopted = e.Source.Adopted, e.To.Adopted
+	}
+	if e.Selective() {
+		e.Delta = meta.DiffSelective(e.Source.Rules, e.Source.Uses, e.To.Rules, e.To.Order, oldAdopted, newAdopted)
+		return
+	}
+	e.Delta = meta.Diff(e.Source.Rules, e.To.Rules, e.To.Order)
+	e.Delta.Adopted = meta.DiffAdopted(oldAdopted, newAdopted)
+}
 
 // recorded lists the rule titles recorded for the source at the last sync, sorted.
-func (e *Edge) recorded() []string { return meta.SortedKeys(e.Source.Rules) }
+func (e *Edge) recorded() []string {
+	if len(e.Source.Rules) == 0 && len(e.Source.Uses) > 0 {
+		out := append([]string(nil), e.Source.Uses...)
+		sort.Strings(out)
+		return out
+	}
+	return meta.SortedKeys(e.Source.Rules)
+}
 
 // Graph is every node of the repository with its edges.
 type Graph struct {
-	Root      string
-	Paths     config.Paths // where product specs, technical specs, and code live
-	Nodes     []*Node      // sorted by Rel
-	byRel     map[string]*Node
-	files     map[string]bool // every file git tracks or would track under the roots
-	topo      []*Node         // technical nodes with metadata, sources first
-	pos       map[*Node]int
-	cycle     []string
-	inCycle   map[*Node]bool
-	strays    []loose // metadata files that are no node, with the fix
-	uncovered []loose // files in no node, with the fix
-	gaps      []Gap
-	gapDrift  []string
+	Root        string
+	Paths       config.Paths // where product specs, technical specs, and code live
+	Nodes       []*Node      // sorted by Rel
+	byRel       map[string]*Node
+	files       map[string]bool // every file git tracks or would track under the roots
+	topo        []*Node         // technical nodes with metadata, sources first
+	pos         map[*Node]int
+	cycle       []string
+	inCycle     map[*Node]bool
+	strays      []loose // metadata files that are no node, with the fix
+	uncovered   []loose // files in no node, with the fix
+	gaps        []Gap
+	gapDrift    []string
+	reviewDrift []loose
+	bySource    map[*Node]map[Kind][]*Node
+	byRule      map[*Node]map[string]map[Kind][]*Node
+	unitsDone   bool
+	cachedUnits []Unit
+	nodeUnits   map[*Node]NodeUnit
 }
 
 // Load reads the layout of .sdd/.sdd-config.json, lists the files git tracks
@@ -185,7 +240,7 @@ func Load(root string) (*Graph, error) {
 		if !ok {
 			return nil
 		}
-		n := &Node{Rel: rel, Kind: k, IsDir: dir, MetaRel: meta.MetaRel(rel, dir)}
+		n := &Node{Rel: rel, Kind: k, IsDir: dir, MetaRel: meta.MetaRel(rel, dir), g: g}
 		if dir {
 			n.Dir = filepath.Join(root, filepath.FromSlash(rel))
 		} else {
@@ -261,7 +316,18 @@ func Load(root string) (*Graph, error) {
 				return nil, err
 			}
 			n.text = string(text)
+			n.Purpose = purpose(n.text)
+			if n.Kind == Technical {
+				n.Adopted = meta.AdoptedHash(n.text)
+			}
 			n.Rules, n.Order, n.RuleErr = meta.RuleHashes(n.text)
+			n.ruleLinks = md.RuleLinks(n.text)
+			if len(n.Order) > 0 {
+				n.slugToRule = make(map[string]string, len(n.Order))
+				for _, t := range n.Order {
+					n.slugToRule[md.Slug(t)] = t
+				}
+			}
 		}
 	}
 	paths, repoFiles := repoPaths(root, all)
@@ -269,7 +335,6 @@ func Load(root string) (*Graph, error) {
 	for _, n := range g.Nodes {
 		if n.text != "" {
 			n.refErrs = g.brokenLinks(n, paths, repoFiles, anchors)
-			n.text = ""
 		}
 	}
 	for _, n := range g.Nodes {
@@ -278,14 +343,14 @@ func Load(root string) (*Graph, error) {
 		}
 		for _, s := range n.Meta.Sources {
 			e := &Edge{From: n, Source: s, To: g.byRel[cleanRel(s.Path)]}
-			if e.Valid() {
-				e.Delta = meta.Diff(s.Rules, e.To.Rules, e.To.Order)
-			}
+			e.computeDelta()
 			n.Sources = append(n.Sources, e)
 		}
 	}
 	g.order()
 	g.gaps, g.gapDrift = loadGaps(root, g.Paths)
+	g.loadReviews(all)
+	g.rebuildIndex()
 	return g, nil
 }
 
@@ -511,6 +576,9 @@ func (g *Graph) Staged() (nodes []*Node, uncovered []string, err error) {
 			uncovered = append(uncovered, msg)
 		}
 	}
+	for _, l := range g.reviewDrift {
+		addUnc(l.msg)
+	}
 	for _, f := range strings.Split(out, "\x00") {
 		if f == "" {
 			continue
@@ -672,12 +740,16 @@ func (g *Graph) Node(rel string) *Node { return g.byRel[rel] }
 // loose is a file under the roots that belongs to no node, with its fix.
 type loose struct{ file, msg string }
 
-// Loose lists the metadata files that are no node, then the files in no
-// node, each with its fix: every one when under is empty, else those at or
-// under one of the root-relative paths of under.
+// Loose lists the metadata files that are no node, the files in no node, and
+// invalid review checkpoints, each with its fix: every one when under is empty,
+// else those at or under one of the root-relative paths of under.
 func (g *Graph) Loose(under []string) []string {
+	var all []loose
+	all = append(all, g.strays...)
+	all = append(all, g.uncovered...)
+	all = append(all, g.reviewDrift...)
 	var out []string
-	for _, l := range append(append([]loose(nil), g.strays...), g.uncovered...) {
+	for _, l := range all {
 		if len(under) == 0 {
 			out = append(out, l.msg)
 			continue
@@ -757,69 +829,261 @@ func (g *Graph) Owner(f string) *Node {
 	return nil
 }
 
-// consumers returns the nodes of kind k with a valid edge to n.
-func (g *Graph) consumers(n *Node, k Kind) []*Node {
-	var out []*Node
-	for _, m := range g.Nodes {
-		if m.Kind != k {
-			continue
-		}
-		for _, e := range m.Sources {
-			if e.Valid() && e.To == n {
-				out = append(out, m)
-				break
-			}
-		}
+// rebuildIndex populates source and rule consumer indices and resets cached units.
+func (g *Graph) rebuildIndex() {
+	g.bySource = map[*Node]map[Kind][]*Node{}
+	g.byRule = map[*Node]map[string]map[Kind][]*Node{}
+	g.unitsDone = false
+	g.cachedUnits = nil
+	g.nodeUnits = nil
+	for i := range g.gaps {
+		g.gaps[i].matched = false
 	}
-	return out
-}
-
-// served maps every perspective node the code node's technical specs list to
-// the first technical spec that serves it, and reports which nodes it lists.
-func (g *Graph) served(c *Node) (served map[*Node]*Node, listed map[*Node]bool) {
-	served, listed = map[*Node]*Node{}, map[*Node]bool{}
-	for _, e := range c.Sources {
-		if !e.Valid() {
-			continue
-		}
-		listed[e.To] = true
-		if e.To.Kind != Technical {
-			continue
-		}
-		for _, te := range e.To.Sources {
-			if te.Valid() && te.To.Kind == Perspective {
-				if _, ok := served[te.To]; !ok {
-					served[te.To] = e.To
+	for _, n := range g.Nodes {
+		n.selective = false
+		n.syncedSelective = false
+	}
+	for _, m := range g.Nodes {
+		seenSrc := map[*Node]bool{}
+		seenRule := map[*Node]map[string]bool{}
+		for _, e := range m.Sources {
+			if !e.Valid() {
+				continue
+			}
+			t := e.To
+			if !seenSrc[t] {
+				seenSrc[t] = true
+				if g.bySource[t] == nil {
+					g.bySource[t] = map[Kind][]*Node{}
+				}
+				g.bySource[t][m.Kind] = append(g.bySource[t][m.Kind], m)
+			}
+			addRule := func(title string) {
+				if seenRule[t] == nil {
+					seenRule[t] = map[string]bool{}
+				}
+				if seenRule[t][title] {
+					return
+				}
+				seenRule[t][title] = true
+				if g.byRule[t] == nil {
+					g.byRule[t] = map[string]map[Kind][]*Node{}
+				}
+				if g.byRule[t][title] == nil {
+					g.byRule[t][title] = map[Kind][]*Node{}
+				}
+				g.byRule[t][title][m.Kind] = append(g.byRule[t][title][m.Kind], m)
+			}
+			if e.Selective() {
+				t.selective = true
+				if e.Source.Hash == "" && len(e.Source.Rules) > 0 {
+					t.syncedSelective = true
+				}
+				for _, u := range e.Source.Uses {
+					if _, ok := t.Rules[u]; ok {
+						addRule(u)
+					}
+				}
+			} else {
+				for _, title := range t.Order {
+					addRule(title)
 				}
 			}
 		}
 	}
-	return served, listed
 }
 
-// missing lists the perspective nodes a code node's technical specs serve
-// that the node does not list, sorted by path.
-func (g *Graph) missing(c *Node) []*Node {
-	served, listed := g.served(c)
-	var out []*Node
-	for _, p := range sortedNodes(served) {
-		if !listed[p] {
-			out = append(out, p)
+// consumers returns the nodes of kind k with a valid edge to n.
+func (g *Graph) consumers(n *Node, k Kind) []*Node {
+	if g.bySource == nil {
+		return nil
+	}
+	return g.bySource[n][k]
+}
+
+// ruleConsumers returns the nodes of kind k that consume rule title of n
+// (either integrally or by selecting title in uses).
+func (g *Graph) ruleConsumers(n *Node, title string, k Kind) []*Node {
+	if g.byRule == nil || g.byRule[n] == nil {
+		return nil
+	}
+	return g.byRule[n][title][k]
+}
+
+// perspCov summarizes perspective coverage required by a code node's listed
+// technical specs, and how the code node lists each perspective.
+type perspCov struct {
+	served       map[*Node]*Node            // perspective -> first technical spec serving it
+	integral     map[*Node]bool             // perspective -> whether any technical spec serves it integrally
+	rules        map[*Node]map[string]bool  // perspective -> union of served rule titles
+	ruleServedBy map[*Node]map[string]*Node // perspective -> title -> first technical spec serving it
+	listedEdge   map[*Node]*Edge            // perspective -> code node's edge to it
+}
+
+func (p perspCov) reqTitles(n *Node) []string {
+	if p.integral[n] {
+		return append([]string(nil), n.Order...)
+	}
+	var out []string
+	for _, t := range n.Order {
+		if p.rules[n][t] {
+			out = append(out, t)
 		}
 	}
 	return out
 }
 
-// unserved lists the perspective nodes code node c lists that none of its
-// technical specs serves, in source order.
-func (g *Graph) unserved(c *Node) []*Node {
-	served, _ := g.served(c)
-	var out []*Node
+func (g *Graph) coverage(c *Node) perspCov {
+	cov := perspCov{
+		served:       map[*Node]*Node{},
+		integral:     map[*Node]bool{},
+		rules:        map[*Node]map[string]bool{},
+		ruleServedBy: map[*Node]map[string]*Node{},
+		listedEdge:   map[*Node]*Edge{},
+	}
 	for _, e := range c.Sources {
-		if e.Valid() && e.To.Kind == Perspective {
-			if _, ok := served[e.To]; !ok {
-				out = append(out, e.To)
+		if !e.Valid() {
+			continue
+		}
+		if e.To.Kind == Perspective && cov.listedEdge[e.To] == nil {
+			cov.listedEdge[e.To] = e
+		}
+		if e.To.Kind != Technical {
+			continue
+		}
+		for _, te := range e.To.Sources {
+			if !te.Valid() || te.To.Kind != Perspective {
+				continue
 			}
+			p := te.To
+			if _, ok := cov.served[p]; !ok {
+				cov.served[p] = e.To
+			}
+			if cov.rules[p] == nil {
+				cov.rules[p] = map[string]bool{}
+				cov.ruleServedBy[p] = map[string]*Node{}
+			}
+			if !te.Selective() {
+				cov.integral[p] = true
+				for _, t := range p.Order {
+					cov.rules[p][t] = true
+					if cov.ruleServedBy[p][t] == nil {
+						cov.ruleServedBy[p][t] = e.To
+					}
+				}
+			} else {
+				for _, u := range te.Source.Uses {
+					if _, ok := p.Rules[u]; ok {
+						cov.rules[p][u] = true
+						if cov.ruleServedBy[p][u] == nil {
+							cov.ruleServedBy[p][u] = e.To
+						}
+					}
+				}
+			}
+		}
+	}
+	return cov
+}
+
+type missingPersp struct {
+	node     *Node    // the perspective node
+	servedBy *Node    // the technical spec that serves the missing requirement
+	titles   []string // required titles missing from c
+	unlisted bool     // true when c does not list node at all
+}
+
+func (g *Graph) missingCov(c *Node) []missingPersp {
+	cov := g.coverage(c)
+	var out []missingPersp
+	for _, p := range sortedNodes(cov.served) {
+		req := cov.reqTitles(p)
+		ce := cov.listedEdge[p]
+		if ce == nil {
+			out = append(out, missingPersp{node: p, servedBy: cov.served[p], titles: req, unlisted: true})
+			continue
+		}
+		if !ce.Selective() {
+			continue
+		}
+		useSet := map[string]bool{}
+		for _, u := range ce.Source.Uses {
+			useSet[u] = true
+		}
+		var miss []string
+		var srv *Node
+		for _, t := range req {
+			if !useSet[t] {
+				miss = append(miss, t)
+				if srv == nil {
+					srv = cov.ruleServedBy[p][t]
+				}
+			}
+		}
+		if len(miss) > 0 {
+			if srv == nil {
+				srv = cov.served[p]
+			}
+			out = append(out, missingPersp{node: p, servedBy: srv, titles: miss})
+		}
+	}
+	return out
+}
+
+type unservedPersp struct {
+	msg  string // drift and Sync message
+	drop string // audit Dossier DropPerspectives entry
+}
+
+func (g *Graph) unservedCov(c *Node) []unservedPersp {
+	cov := g.coverage(c)
+	var out []unservedPersp
+	for _, ce := range c.Sources {
+		if !ce.Valid() || ce.To.Kind != Perspective {
+			continue
+		}
+		p := ce.To
+		if cov.served[p] == nil {
+			out = append(out, unservedPersp{
+				msg:  unservedMsg(c, p),
+				drop: fmt.Sprintf("`%s` (none of its technical specs serves it)", p.Rel),
+			})
+			continue
+		}
+		if cov.integral[p] {
+			continue
+		}
+		req := cov.reqTitles(p)
+		if !ce.Selective() {
+			var extra []string
+			for _, t := range p.Order {
+				if !cov.rules[p][t] {
+					extra = append(extra, t)
+				}
+			}
+			var msg string
+			if len(extra) > 0 {
+				msg = fmt.Sprintf("`%s` lists `%s` without uses (unserved rules: %s), but its technical specs serve only %s", c.Rel, p.Rel, meta.Quoted(extra), meta.Quoted(req))
+			} else {
+				msg = fmt.Sprintf("`%s` lists `%s` without uses, but its technical specs serve it selectively (%s)", c.Rel, p.Rel, meta.Quoted(req))
+			}
+			out = append(out, unservedPersp{
+				msg:  msg,
+				drop: fmt.Sprintf("`%s` (integral, but technical specs serve only %s)", p.Rel, meta.Quoted(req)),
+			})
+			continue
+		}
+		var extra []string
+		for _, u := range ce.Source.Uses {
+			if _, ok := p.Rules[u]; ok && !cov.rules[p][u] {
+				extra = append(extra, u)
+			}
+		}
+		if len(extra) > 0 {
+			out = append(out, unservedPersp{
+				msg:  fmt.Sprintf("`%s` selects %s of `%s`, but none of its technical specs serves %s", c.Rel, meta.Quoted(extra), p.Rel, meta.Quoted(extra)),
+				drop: fmt.Sprintf("`%s`: %s (none of its technical specs serves %s)", p.Rel, meta.Quoted(extra), meta.Quoted(extra)),
+			})
 		}
 	}
 	return out
@@ -859,6 +1123,7 @@ func selfFindings(n *Node) []finding {
 	if n.RuleErr != nil {
 		block(fmt.Sprintf("`%s`: %v", n.Rel, n.RuleErr))
 	}
+	reviewedMismatch := n.spec() && !n.selective && n.review == nil && n.reviewInvalid == "" && n.Meta != nil && n.Meta.Reviewed != "" && n.Meta.Reviewed != n.Hash
 	switch {
 	case !n.HasMeta && n.Kind == Technical:
 		block(fmt.Sprintf("`%s` has no %s; write its skeleton `{\"version\": %d, \"sources\": [...]}` (/sdd-design)", n.Rel, path.Base(n.MetaRel), meta.Version))
@@ -866,12 +1131,16 @@ func selfFindings(n *Node) []finding {
 		written(fmt.Sprintf("`%s` has no %s; run metadata --write %s", n.Rel, path.Base(n.MetaRel), n.Rel))
 	case n.MetaErr != nil:
 		block(fmt.Sprintf("`%s`: %v", n.MetaRel, n.MetaErr))
-	case n.Meta.Hash != n.Hash || !maps.Equal(n.Meta.Rules, n.Rules):
+	case n.Meta.Hash != n.Hash || !maps.Equal(n.Meta.Rules, n.Rules) || n.Meta.Adopted != n.Adopted || reviewedMismatch:
 		written(fmt.Sprintf("`%s` does not match the content; run metadata --write %s", n.MetaRel, n.Rel))
 	case n.Kind == Code && n.Meta.Audited == nil:
 		written(fmt.Sprintf("`%s` carries no audited; run metadata --write %s", n.MetaRel, n.Rel))
 	case n.Kind != Code && n.Meta.Audited != nil:
 		written(fmt.Sprintf("`%s` carries audited, which only a code node has; run metadata --write %s", n.MetaRel, n.Rel))
+	case !n.spec() && n.Meta.Reviewed != "":
+		written(fmt.Sprintf("`%s` carries reviewed, which only a spec node has; run metadata --write %s", n.MetaRel, n.Rel))
+	case n.Kind != Technical && n.Meta.Adopted != "":
+		written(fmt.Sprintf("`%s` carries adopted, which only a technical spec node has; run metadata --write %s", n.MetaRel, n.Rel))
 	}
 	if n.Meta != nil {
 		if !n.IsDir && len(n.Meta.Files) > 0 {
@@ -884,6 +1153,25 @@ func selfFindings(n *Node) []finding {
 				block(fmt.Sprintf("`%s` lists `%s` twice in sources; keep one", n.MetaRel, s.Path))
 			}
 			seen[cp] = true
+			if s.Uses != nil && len(s.Uses) == 0 {
+				block(fmt.Sprintf("`%s` lists `%s` with empty uses; list at least one rule title or omit uses", n.MetaRel, s.Path))
+			}
+			seenUse := map[string]string{}
+			for _, u := range s.Uses {
+				if strings.TrimSpace(u) == "" {
+					block(fmt.Sprintf("`%s` lists a blank rule title in uses for `%s`", n.MetaRel, s.Path))
+					continue
+				}
+				low := strings.ToLower(u)
+				if prev, dup := seenUse[low]; dup {
+					block(fmt.Sprintf("`%s` lists %q twice in uses for `%s` (also %q); keep one", n.MetaRel, u, s.Path, prev))
+					continue
+				}
+				seenUse[low] = u
+			}
+			if n.Kind != Technical && s.Adopted != "" {
+				block(fmt.Sprintf("`%s` carries adopted on source `%s`, which only a technical spec has", n.MetaRel, s.Path))
+			}
 		}
 	}
 	return append(d, n.linkErrs...)
@@ -903,14 +1191,40 @@ func (g *Graph) findings(n *Node) []finding {
 			block(fmt.Sprintf("`%s` lists itself as a source", n.Rel))
 		case !n.Kind.MaySource(e.To.Kind):
 			block(fmt.Sprintf("`%s` (%s) lists `%s` (%s) as a source; %s", n.Rel, n.Kind, e.To.Rel, e.To.Kind, allowed(n.Kind)))
+		default:
+			if (n.Kind != Technical || e.To.Kind != Technical) && e.Source.Adopted != "" {
+				block(fmt.Sprintf("`%s` carries adopted on source `%s`; only a technical → technical source records adopted", n.MetaRel, e.To.Rel))
+			}
+			if e.Selective() && e.To.RuleErr == nil {
+				ci := map[string]string{}
+				for _, t := range e.To.Order {
+					ci[strings.ToLower(t)] = t
+				}
+				for _, u := range e.Source.Uses {
+					if strings.TrimSpace(u) == "" {
+						continue
+					}
+					if _, exact := e.To.Rules[u]; exact {
+						continue
+					}
+					if _, inSnap := e.Source.Rules[u]; inSnap {
+						continue // removed or renamed after sync; reported as stale
+					}
+					if actual, ok := ci[strings.ToLower(u)]; ok {
+						block(fmt.Sprintf("`%s` lists %q in uses for `%s`, which differs in case from %q; use %q", n.MetaRel, u, e.To.Rel, actual, actual))
+					} else {
+						block(fmt.Sprintf("`%s` lists unknown rule %q in uses for `%s`", n.MetaRel, u, e.To.Rel))
+					}
+				}
+			}
 		}
 	}
 	if n.Kind == Code && n.Meta != nil {
 		if msg := g.noTechnical(n); msg != "" {
 			warn(msg)
 		} else if !g.danglingTechnical(n) { // which perspectives are served is unknown until /sdd-implement drops it
-			for _, p := range g.unserved(n) {
-				warn(unservedMsg(n, p))
+			for _, u := range g.unservedCov(n) {
+				warn(u.msg)
 			}
 		}
 	}
@@ -1035,6 +1349,23 @@ func (g *Graph) Design() []string {
 				out = append(out, line)
 				continue
 			}
+			var unconsumed []string
+			for _, title := range n.Order {
+				if len(g.ruleConsumers(n, title, Technical)) == 0 {
+					unconsumed = append(unconsumed, title)
+				}
+			}
+			parkedUnc := map[string]bool{}
+			if len(unconsumed) > 0 {
+				line := fmt.Sprintf("`%s` has unconsumed rules: %s", n.Rel, meta.Quoted(unconsumed))
+				for _, gap := range g.gapsFor("spec", n.Rel) {
+					if hasTitle(unconsumed, gap.Title) {
+						line += fmt.Sprintf("; %q parked: %s (/sdd-spec)", gap.Title, gap.Reason)
+						parkedUnc[strings.ToLower(gap.Title)] = true
+					}
+				}
+				out = append(out, line)
+			}
 			stale := false
 			for _, t := range cons {
 				for _, e := range t.Sources {
@@ -1045,7 +1376,7 @@ func (g *Graph) Design() []string {
 			}
 			if !stale {
 				for _, gap := range g.gapsFor("spec", n.Rel) {
-					if hasRule(n.Rules, gap.Title) {
+					if hasRule(n.Rules, gap.Title) && !parkedUnc[strings.ToLower(gap.Title)] {
 						out = append(out, fmt.Sprintf("`%s` has a spec gap on %q: %s (/sdd-spec)", n.Rel, gap.Title, gap.Reason))
 					}
 				}
@@ -1121,6 +1452,10 @@ func (u Unit) Rel() string {
 // Units lists the /sdd-implement backlog, sources first: a unit sits after every
 // technical spec it realizes or depends on.
 func (g *Graph) Units() []Unit {
+	if g.unitsDone {
+		return g.cachedUnits
+	}
+	g.nodeUnits = map[*Node]NodeUnit{}
 	type keyed struct {
 		pos  int
 		kind Kind
@@ -1129,7 +1464,20 @@ func (g *Graph) Units() []Unit {
 	var all []keyed
 	for _, t := range g.topo {
 		if len(g.consumers(t, Code)) == 0 {
-			all = append(all, keyed{g.pos[t], Technical, g.newUnit(t)})
+			all = append(all, keyed{g.pos[t], Technical, g.newUnit(t, nil)})
+			continue
+		}
+		if g.global(t) {
+			continue
+		}
+		var unconsumed []string
+		for _, title := range t.Order {
+			if len(g.ruleConsumers(t, title, Code)) == 0 {
+				unconsumed = append(unconsumed, title)
+			}
+		}
+		if len(unconsumed) > 0 {
+			all = append(all, keyed{g.pos[t], Technical, g.newUnit(t, unconsumed)})
 		}
 	}
 	dirs := map[string]*keyed{}
@@ -1138,10 +1486,11 @@ func (g *Graph) Units() []Unit {
 		if c.Kind != Code {
 			continue
 		}
-		nu, ok := g.codeUnit(c)
+		nu, ok := g.computeCodeUnit(c)
 		if !ok {
 			continue
 		}
+		g.nodeUnits[c] = nu
 		p := -1
 		for _, e := range c.Sources {
 			if e.Valid() && e.To.Kind == Technical && g.pos[e.To] > p {
@@ -1179,6 +1528,8 @@ func (g *Graph) Units() []Unit {
 	for i, k := range all {
 		units[i] = g.park(k.u)
 	}
+	g.cachedUnits = units
+	g.unitsDone = true
 	return units
 }
 
@@ -1222,18 +1573,43 @@ func groupUnit(nodes []NodeUnit) (reason, wait string, rules []RuleState) {
 	return reason, wait, rules
 }
 
-// newUnit is a technical spec no code node realizes: every rule it and the
-// perspective specs it serves hold is new. A spec that serves no perspective
-// is a global constraint: the fix is to list it from the code it constrains.
-func (g *Graph) newUnit(t *Node) Unit {
+// newUnit is a technical spec with no code node or (for a feature technical
+// spec) with unconsumed rules, accompanied by the perspective rules it serves
+// that still have no code consumer. A spec that serves no perspective is a
+// global constraint: the fix is to list it from the code it constrains.
+func (g *Graph) newUnit(t *Node, unconsumed []string) Unit {
 	u := Unit{Node: t, Reason: "no code node lists it; list it from the code nodes it constrains", Wait: g.wait(t, nil)}
 	for _, e := range sortedEdges(t.Sources) {
-		if e.Valid() && e.To.Kind == Perspective {
-			u.Reason = "no code node"
+		if !e.Valid() || e.To.Kind != Perspective {
+			continue
+		}
+		u.Reason = "no code node"
+		var servedTitles []string
+		if e.Selective() {
+			useSet := map[string]bool{}
+			for _, ut := range e.Source.Uses {
+				useSet[ut] = true
+			}
 			for _, title := range e.To.Order {
+				if useSet[title] {
+					servedTitles = append(servedTitles, title)
+				}
+			}
+		} else {
+			servedTitles = e.To.Order
+		}
+		for _, title := range servedTitles {
+			if len(unconsumed) == 0 || len(g.ruleConsumers(e.To, title, Code)) == 0 {
 				u.Rules = append(u.Rules, RuleState{Title: title, State: "new", Source: e.To.Rel})
 			}
 		}
+	}
+	if len(unconsumed) > 0 {
+		u.Reason = "unconsumed rules: " + meta.Quoted(unconsumed)
+		for _, title := range unconsumed {
+			u.Rules = append(u.Rules, RuleState{Title: title, State: "new", Source: t.Rel})
+		}
+		return u
 	}
 	for _, title := range t.Order {
 		u.Rules = append(u.Rules, RuleState{Title: title, State: "new", Source: t.Rel})
@@ -1241,11 +1617,22 @@ func (g *Graph) newUnit(t *Node) Unit {
 	return u
 }
 
-// codeUnit is a code node with a stale or dangling source, or missing a
-// perspective node its technical specs serve: removed and renamed rules
-// first, then new and changed ones in file order, perspective sources before
-// technical ones, then the rules of the missing perspective nodes.
+// codeUnit returns the pending NodeUnit for code node c, reusing the cached
+// computation from Units.
 func (g *Graph) codeUnit(c *Node) (NodeUnit, bool) {
+	if !g.unitsDone {
+		g.Units()
+	}
+	nu, ok := g.nodeUnits[c]
+	return nu, ok
+}
+
+// computeCodeUnit is a code node with a stale or dangling source, or missing a
+// perspective node or required perspective rule its technical specs serve:
+// removed and renamed rules first, then new and changed ones in file order,
+// perspective sources before technical ones, then the rules of the missing
+// perspective requirements.
+func (g *Graph) computeCodeUnit(c *Node) (NodeUnit, bool) {
 	u := NodeUnit{Node: c}
 	var stale, dangling, missing []string
 	var first, rest []RuleState
@@ -1278,11 +1665,14 @@ func (g *Graph) codeUnit(c *Node) (NodeUnit, bool) {
 			}
 		}
 	}
-	served, _ := g.served(c)
-	for _, p := range g.missing(c) {
-		missing = append(missing, fmt.Sprintf("`%s` (served by `%s`)", p.Rel, served[p].Rel))
-		for _, title := range p.Order {
-			rest = append(rest, RuleState{Title: title, State: "new", Source: p.Rel})
+	for _, m := range g.missingCov(c) {
+		if m.unlisted {
+			missing = append(missing, fmt.Sprintf("`%s` (served by `%s`)", m.node.Rel, m.servedBy.Rel))
+		} else {
+			missing = append(missing, fmt.Sprintf("`%s` (%s, served by `%s`)", m.node.Rel, meta.Quoted(m.titles), m.servedBy.Rel))
+		}
+		for _, title := range m.titles {
+			rest = append(rest, RuleState{Title: title, State: "new", Source: m.node.Rel})
 		}
 	}
 	if len(stale)+len(dangling)+len(missing) == 0 {

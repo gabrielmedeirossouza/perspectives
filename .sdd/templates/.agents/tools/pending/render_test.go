@@ -313,3 +313,65 @@ func TestMixedDirectoryUnitMarksWaitingNodeRulesAsWait(t *testing.T) {
 		t.Fatalf("mixed directory unit output:\n%s", out)
 	}
 }
+
+func TestRenderReviewAndReviewAuditDossier(t *testing.T) {
+	root := auditFixture(t)
+	git := func(args ...string) {
+		t.Helper()
+		if out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## S\n\n### Vitest\n\nSee [Linting](#linting).\n\n### Linting\n\nx\n")
+	sync(t, root, T)
+	write(t, root, C+".metadata.json", `{"version": 2, "sources": [{"path": "`+I+`"}, {"path": "`+P+`"}, {"path": "`+T+`", "uses": ["Vitest"]}]}`+"\n")
+	sync(t, root, C)
+	approve(t, root, C)
+	git("add", "-A")
+	git("commit", "-q", "-m", "base")
+
+	// Change unselected rule Linting on T -> owes applicability review.
+	write(t, root, T, "# Toolchain\n\nPurpose.\n\n## S\n\n### Vitest\n\nSee [Linting](#linting).\n\n### Linting\n\ny\n")
+	refresh(t, root, T)
+	g := load(t, root)
+	out := render(g, false)
+	if !strings.Contains(out, "# Review") || !strings.Contains(out, "`"+T+"` owes an applicability review (/sdd-design): \"Linting\"") {
+		t.Fatalf("expected # Review section:\n%s", out)
+	}
+	// Classify as expanded over src/backend/invite and check review audit dossier.
+	if _, err := g.ClassifyReview(g.Node(T), "expanded", []string{"src/backend/invite"}, time.Unix(0, 0)); err != nil {
+		t.Fatal(err)
+	}
+	g = load(t, root)
+	out = render(g, false)
+	if !strings.Contains(out, "0/1 resolved; next /sdd-audit: `"+C+"`") {
+		t.Fatalf("expected checkpoint progress in # Review:\n%s", out)
+	}
+	revAudit, err := renderReviewAudit(g, false, T, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"# Review Audit: `" + T + "` (\"Linting\")",
+		"`" + T + "` (uses: \"Vitest\"); unselected: \"Linting\"",
+		"Rule link hints:",
+		"#linting",
+		"Review targets:",
+	} {
+		if !strings.Contains(revAudit, want) {
+			t.Fatalf("review audit lacks %q:\n%s", want, revAudit)
+		}
+	}
+	// Record and apply keep verdict on C; renderReviewAudit without --all skips C.
+	if err := g.RecordVerdict(g.Node(T), g.Node(C), "keep", []string{"Vitest"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.ApplyReviewCandidate(g.Node(T), g.Node(C), time.Unix(0, 0)); err != nil {
+		t.Fatal(err)
+	}
+	g = load(t, root)
+	revAudit, err = renderReviewAudit(g, false, T, nil)
+	if err != nil || !strings.Contains(revAudit, "review verdict keep applied; skipped") {
+		t.Fatalf("expected skipped after apply:\n%s (err=%v)", revAudit, err)
+	}
+}

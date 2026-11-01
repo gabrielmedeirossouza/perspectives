@@ -96,3 +96,28 @@ func TestSlugFollowsAnchors(t *testing.T) {
 		}
 	}
 }
+
+func TestAdoptedChromeAndRuleLinks(t *testing.T) {
+	spec := "# Guide\n\nPurpose.\n\n**Out of scope:** billing.\n\n## Adopted patterns\n\n- EDA (`src/specs/code-guide/spec.md#local-event-delivery`)\n\n## Rules\n\n### First\n\nSee [Second](#second).\n\n### Second\n\nBody.\n"
+	if got := Adopted(spec); got != "- EDA (`src/specs/code-guide/spec.md#local-event-delivery`)" {
+		t.Fatalf("Adopted = %q", got)
+	}
+	if Adopted("# Guide\n\n## Rules\n\n### First\n\nx\n") != "" {
+		t.Fatal("expected empty Adopted")
+	}
+	if Chrome(spec) != Chrome(reflect.ValueOf(spec).String()) {
+		t.Fatal("Chrome not deterministic")
+	}
+	editedRule := "# Guide\n\nPurpose.\n\n**Out of scope:** billing.\n\n## Adopted patterns\n\n- Other\n\n## Rules\n\n### First\n\nChanged.\n"
+	if Chrome(spec) != Chrome(editedRule) {
+		t.Fatalf("Chrome changed when only rule or Adopted patterns changed:\n%q\nvs\n%q", Chrome(spec), Chrome(editedRule))
+	}
+	editedPurpose := "# Guide\n\nOther purpose.\n\n**Out of scope:** billing.\n\n## Rules\n\n### First\n\nChanged.\n"
+	if Chrome(spec) == Chrome(editedPurpose) {
+		t.Fatal("Chrome missed purpose edit")
+	}
+	links := RuleLinks(spec)
+	if !reflect.DeepEqual(links, map[string][]string{"First": {"#second"}}) {
+		t.Fatalf("RuleLinks = %#v", links)
+	}
+}

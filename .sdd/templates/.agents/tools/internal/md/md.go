@@ -83,16 +83,57 @@ func Rules(text string) []Rule {
 		if s.Level != 3 {
 			continue
 		}
-		lines := s.Lines
-		for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
-			lines = lines[1:]
-		}
-		for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
-			lines = lines[:len(lines)-1]
-		}
-		out = append(out, Rule{Title: s.Title, Body: strings.Join(lines, "\n")})
+		out = append(out, Rule{Title: s.Title, Body: trimLines(s.Lines)})
 	}
 	return out
+}
+
+// Adopted returns the body of the ## Adopted patterns section, outer blank
+// lines removed, or "" when absent.
+func Adopted(text string) string {
+	for _, s := range Sections(text) {
+		if s.Level == 2 && strings.EqualFold(s.Title, "Adopted patterns") {
+			return trimLines(s.Lines)
+		}
+	}
+	return ""
+}
+
+// Chrome returns the non-rule, non-adopted-patterns structure and prose of a
+// spec file (# and ## headings and their own lines, outer blank lines removed).
+func Chrome(text string) string {
+	var parts []string
+	for _, s := range Sections(text) {
+		if s.Level == 3 || (s.Level == 2 && strings.EqualFold(s.Title, "Adopted patterns")) {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%d:%s\n%s", s.Level, s.Title, trimLines(s.Lines)))
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// RuleLinks maps each ### rule title to the link targets in its body.
+func RuleLinks(text string) map[string][]string {
+	var out map[string][]string
+	for _, r := range Rules(text) {
+		if links := Links(r.Body); len(links) > 0 {
+			if out == nil {
+				out = map[string][]string{}
+			}
+			out[r.Title] = links
+		}
+	}
+	return out
+}
+
+func trimLines(lines []string) string {
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // outsideFences returns the lines of text outside code fences, the fence

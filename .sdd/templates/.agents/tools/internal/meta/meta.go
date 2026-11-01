@@ -29,9 +29,11 @@ const (
 
 // Source is one upstream node with the hashes it had when this node was last synced.
 type Source struct {
-	Path  string            `json:"path"`
-	Hash  string            `json:"hash,omitempty"`
-	Rules map[string]string `json:"rules,omitempty"`
+	Path    string            `json:"path"`
+	Hash    string            `json:"hash,omitempty"`
+	Adopted string            `json:"adopted,omitempty"`
+	Uses    []string          `json:"uses,omitempty"`
+	Rules   map[string]string `json:"rules,omitempty"`
 }
 
 // Metadata is the content of a node's metadata file.
@@ -40,7 +42,9 @@ type Metadata struct {
 	Algorithm string              `json:"algorithm"`
 	Hash      string              `json:"hash"`
 	Modified  string              `json:"modified"`
-	Audited   *int                `json:"audited,omitempty"` // code nodes only: approvals at the current hash
+	Reviewed  string              `json:"reviewed,omitempty"` // spec nodes only: hash whose applicability was reviewed
+	Audited   *int                `json:"audited,omitempty"`  // code nodes only: approvals at the current hash
+	Adopted   string              `json:"adopted,omitempty"`  // technical specs only: hash of ## Adopted patterns
 	Rules     map[string]string   `json:"rules,omitempty"`
 	Sources   []Source            `json:"sources,omitempty"`
 	Files     map[string][]string `json:"files,omitempty"` // directory nodes only: file → the sources it is linked to
@@ -143,6 +147,14 @@ func RuleHashes(text string) (map[string]string, []string, error) {
 	return hashes, order, nil
 }
 
+// AdoptedHash is the sha256 of the body of ## Adopted patterns, or "" when absent.
+func AdoptedHash(text string) string {
+	if b := md.Adopted(text); b != "" {
+		return Sum([]byte(b))
+	}
+	return ""
+}
+
 // Stamp formats t as the value of "modified".
 func Stamp(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
@@ -174,6 +186,26 @@ type Delta struct {
 	Changed []string
 	Removed []string
 	Renamed [][2]string // {previous title, current title}: same body, new title
+	Adopted string      // "added", "changed", or "removed" for ## Adopted patterns
+}
+
+// Empty reports whether no rule or ## Adopted patterns changed.
+func (d Delta) Empty() bool {
+	return len(d.Added) == 0 && len(d.Changed) == 0 && len(d.Removed) == 0 && len(d.Renamed) == 0 && d.Adopted == ""
+}
+
+// DiffAdopted compares two ## Adopted patterns hashes.
+func DiffAdopted(then, now string) string {
+	switch {
+	case then == now:
+		return ""
+	case then == "":
+		return "added"
+	case now == "":
+		return "removed"
+	default:
+		return "changed"
+	}
 }
 
 // Diff compares then (recorded) against now (current). order lists now's
@@ -214,6 +246,71 @@ func Diff(then, now map[string]string, order []string) Delta {
 	return d
 }
 
+// DiffSelective compares then (recorded snapshot) against now (full current
+// catalog) restricted to uses. Missing selected titles are checked against the
+// full catalog to detect renames; snapshot entries outside uses that still
+// exist in now (verdict reductions) are ignored, while those absent from now
+// remain pending until synced.
+func DiffSelective(then map[string]string, uses []string, now map[string]string, order []string, oldAdopted, newAdopted string) Delta {
+	var d Delta
+	if order == nil {
+		order = SortedKeys(now)
+	}
+	useSet := make(map[string]bool, len(uses))
+	for _, u := range uses {
+		useSet[u] = true
+	}
+	gone := map[string][]string{}
+	for t, h := range then {
+		if _, ok := now[t]; !ok {
+			gone[h] = append(gone[h], t)
+		}
+	}
+	for h := range gone {
+		sort.Strings(gone[h])
+	}
+	paired := map[string]bool{}
+	for _, t := range order {
+		if !useSet[t] {
+			continue
+		}
+		h := now[t]
+		if old, ok := then[t]; ok {
+			if old != h {
+				d.Changed = append(d.Changed, t)
+			}
+			continue
+		}
+		if olds := gone[h]; len(olds) > 0 {
+			d.Renamed = append(d.Renamed, [2]string{olds[0], t})
+			gone[h] = olds[1:]
+			paired[t] = true
+			continue
+		}
+		d.Added = append(d.Added, t)
+	}
+	// Detect renames against the full catalog for selected titles that disappeared.
+	for _, t := range order {
+		if useSet[t] || paired[t] {
+			continue
+		}
+		if _, inThen := then[t]; inThen {
+			continue
+		}
+		h := now[t]
+		if olds := gone[h]; len(olds) > 0 {
+			d.Renamed = append(d.Renamed, [2]string{olds[0], t})
+			gone[h] = olds[1:]
+		}
+	}
+	for _, titles := range gone {
+		d.Removed = append(d.Removed, titles...)
+	}
+	sort.Strings(d.Removed)
+	d.Adopted = DiffAdopted(oldAdopted, newAdopted)
+	return d
+}
+
 // String renders `added "A"; changed "B"; removed "C"; renamed "D" → "E"`,
 // or "no rule changed".
 func (d Delta) String() string {
@@ -228,6 +325,9 @@ func (d Delta) String() string {
 	part("removed", d.Removed)
 	for _, r := range d.Renamed {
 		parts = append(parts, fmt.Sprintf("renamed %q → %q", r[0], r[1]))
+	}
+	if d.Adopted != "" {
+		parts = append(parts, d.Adopted+" ## Adopted patterns")
 	}
 	if len(parts) == 0 {
 		return "no rule changed"

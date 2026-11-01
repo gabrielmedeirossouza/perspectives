@@ -12,10 +12,14 @@ import (
 	"tools/internal/repo"
 )
 
-const usage = "usage: go run -C .agents/tools ./metadata [--write | --sync | --approve | --staged] [--root <dir>] [node|dir...]"
+const usage = "usage: go run -C .agents/tools ./metadata [--write | --sync | --approve | --staged | --review <spec> [--scope preserved|expanded|unknown [path...] | --verdict keep|add|reduce|exclude|block [--uses <title>...] [--reason <text>] <candidate> | --apply <candidate...> | --close]] [--root <dir>] [node|dir...]"
 
 type options struct {
 	write, sync, approve, staged bool
+	review                       string
+	revScope, verdict, reason    string
+	uses                         []string
+	apply, closeRev              bool
 	root                         string
 	dirs                         []string
 }
@@ -26,6 +30,10 @@ func main() {
 	check(err)
 	g, err := graph.Load(root)
 	check(err)
+	if opts.review != "" {
+		runReview(g, root, opts, time.Now())
+		return
+	}
 
 	checking := !opts.write && !opts.sync && !opts.approve && !opts.staged
 	var targets []*graph.Node
@@ -128,6 +136,25 @@ func parse(args []string) options {
 			o.approve = true
 		case a == "--staged":
 			o.staged = true
+		case a == "--review" && i+1 < len(args):
+			i++
+			o.review = args[i]
+		case a == "--scope" && i+1 < len(args):
+			i++
+			o.revScope = args[i]
+		case a == "--verdict" && i+1 < len(args):
+			i++
+			o.verdict = args[i]
+		case a == "--uses" && i+1 < len(args):
+			i++
+			o.uses = append(o.uses, args[i])
+		case a == "--reason" && i+1 < len(args):
+			i++
+			o.reason = args[i]
+		case a == "--apply":
+			o.apply = true
+		case a == "--close":
+			o.closeRev = true
 		case a == "--root" && i+1 < len(args):
 			i++
 			o.root = args[i]
@@ -138,13 +165,36 @@ func parse(args []string) options {
 		}
 	}
 	modes := 0
-	for _, on := range []bool{o.write, o.sync, o.approve, o.staged} {
+	for _, on := range []bool{o.write, o.sync, o.approve, o.staged, o.review != ""} {
 		if on {
 			modes++
 		}
 	}
 	if modes > 1 {
-		fail("--write, --sync, --approve, and --staged exclude each other\n"+usage, 2)
+		fail("--write, --sync, --approve, --staged, and --review exclude each other\n"+usage, 2)
+	}
+	if o.review == "" && (o.revScope != "" || o.verdict != "" || len(o.uses) > 0 || o.reason != "" || o.apply || o.closeRev) {
+		fail("--scope, --verdict, --uses, --reason, --apply, and --close require --review <spec>\n"+usage, 2)
+	}
+	if o.review != "" {
+		sub := 0
+		for _, on := range []bool{o.revScope != "", o.verdict != "", o.apply, o.closeRev} {
+			if on {
+				sub++
+			}
+		}
+		if sub > 1 {
+			fail("--scope, --verdict, --apply, and --close exclude each other\n"+usage, 2)
+		}
+		if o.verdict != "" && len(o.dirs) != 1 {
+			fail("--verdict takes exactly one <candidate> path\n"+usage, 2)
+		}
+		if o.apply && len(o.dirs) == 0 {
+			fail("--apply takes at least one <candidate> path\n"+usage, 2)
+		}
+		if (o.closeRev || (o.revScope == "" && o.verdict == "" && !o.apply)) && len(o.dirs) > 0 {
+			fail("unexpected arguments with --review\n"+usage, 2)
+		}
 	}
 	if o.staged && len(o.dirs) > 0 {
 		fail("--staged takes no target\n"+usage, 2)
@@ -203,6 +253,107 @@ func report(written bool, verb, file string) {
 		fmt.Println(verb + " " + file)
 	} else {
 		fmt.Println("unchanged " + file)
+	}
+}
+
+func runReview(g *graph.Graph, root string, opts options, now time.Time) {
+	specNodes, err := resolve(g, root, []string{opts.review}, true, false)
+	check(err)
+	spec := specNodes[0]
+	switch {
+	case opts.revScope != "":
+		closed, err := g.ClassifyReview(spec, opts.revScope, opts.dirs, now)
+		check(err)
+		if closed {
+			fmt.Printf("reviewed %s (%s)\n", spec.MetaRel, spec.Hash)
+			return
+		}
+		sum := g.ReviewState(spec)
+		fmt.Printf("checkpoint %s (%s, %d candidates)\n", sum.CheckpointRel, sum.Scope, sum.Total)
+	case opts.verdict != "":
+		candNodes, err := resolve(g, root, opts.dirs, true, false)
+		check(err)
+		cand := candNodes[0]
+		uses := expandUses(spec, opts.uses)
+		check(g.RecordVerdict(spec, cand, opts.verdict, uses, opts.reason))
+		fmt.Printf("verdict %s (%s) in %s\n", cand.Rel, opts.verdict, meta.ReviewRel(spec.Rel))
+	case opts.apply:
+		cands, err := resolve(g, root, opts.dirs, true, false)
+		check(err)
+		for _, cand := range cands {
+			check(g.ApplyReviewCandidate(spec, cand, now))
+			fmt.Printf("applied %s in %s\n", cand.Rel, meta.ReviewRel(spec.Rel))
+		}
+	case opts.closeRev:
+		check(g.CloseReview(spec, now))
+		fmt.Printf("closed review for %s (%s)\n", spec.Rel, spec.MetaRel)
+	default:
+		printReviewStatus(g, spec)
+	}
+}
+
+func expandUses(spec *graph.Node, raw []string) []string {
+	var out []string
+	for _, r := range raw {
+		if _, exact := spec.Rules[r]; exact || !strings.Contains(r, ",") {
+			out = append(out, r)
+			continue
+		}
+		for _, part := range strings.Split(r, ",") {
+			if p := strings.TrimSpace(part); p != "" {
+				out = append(out, p)
+			}
+		}
+	}
+	return out
+}
+
+func printReviewStatus(g *graph.Graph, spec *graph.Node) {
+	diff := g.ReviewDiff(spec)
+	sum := g.ReviewState(spec)
+	fmt.Printf("source: %s (%s)\n", spec.Rel, sum.Owner)
+	if diff.ReviewedHash == "" {
+		fmt.Println("reviewed: none (unknown scope)")
+	} else if diff.SameHash {
+		fmt.Printf("reviewed: %s (matches current)\n", diff.ReviewedHash)
+	} else if !diff.FoundBase {
+		fmt.Printf("reviewed: %s (not in git; unknown scope)\n", diff.ReviewedHash)
+	} else {
+		fmt.Printf("reviewed: %s -> %s (%s)\n", diff.ReviewedHash, diff.CurrentHash, diff.Delta)
+	}
+	if diff.ChromeChanged {
+		fmt.Println("chrome: changed")
+	}
+	if len(sum.AffectedRules) > 0 {
+		fmt.Printf("rules: %s\n", meta.Quoted(sum.AffectedRules))
+	}
+	if !sum.HasCheckpoint {
+		fmt.Println("checkpoint: none")
+		return
+	}
+	status := sum.Scope
+	if sum.SourceStale {
+		status += ", source changed since classification"
+	}
+	fmt.Printf("checkpoint: %s (%s; %d/%d resolved)\n", sum.CheckpointRel, status, sum.Resolved, sum.Total)
+	for _, st := range sum.Candidates {
+		c := st.Candidate
+		switch {
+		case st.Removed && st.RemovedClean:
+			fmt.Printf("- `%s` (%s): removed (clean)\n", c.Path, c.Kind)
+		case st.Removed:
+			fmt.Printf("- `%s` (%s): removed — pending: %s\n", c.Path, c.Kind, st.InvalidReason)
+		case !st.VerdictValid && c.Verdict != "":
+			fmt.Printf("- `%s` (%s): invalid (%s) (%s)\n", c.Path, c.Kind, st.InvalidReason, st.Writer())
+		case c.Verdict == "":
+			fmt.Printf("- `%s` (%s): pending (%s)\n", c.Path, c.Kind, st.Writer())
+		case st.Blocked:
+			fmt.Printf("- `%s` (%s): blocked — %s (%s)\n", c.Path, c.Kind, c.Reason, st.Writer())
+		case !st.Applied:
+			fmt.Printf("- `%s` (%s): verdict %s (unapplied) (%s)\n", c.Path, c.Kind, c.Verdict, st.Writer())
+		default:
+			fmt.Printf("- `%s` (%s): %s (applied)\n", c.Path, c.Kind, c.Verdict)
+		}
 	}
 }
 

@@ -13,12 +13,13 @@ import (
 )
 
 const (
-	usage = "usage: go run -C .agents/tools ./pending [--batch | --audit [--all] [node|dir...]] [--root <dir>]"
+	usage = "usage: go run -C .agents/tools ./pending [--batch | --audit [--all] [--review <spec>] [node|dir...]] [--root <dir>]"
 	cap   = 5
 )
 
 func main() {
 	batch, audit, all := false, false, false
+	reviewSpec := ""
 	root := ""
 	var dirs []string
 	args := os.Args[1:]
@@ -30,6 +31,9 @@ func main() {
 			audit = true
 		case args[i] == "--all":
 			all = true
+		case args[i] == "--review" && i+1 < len(args):
+			i++
+			reviewSpec = args[i]
 		case args[i] == "--root" && i+1 < len(args):
 			i++
 			root = args[i]
@@ -39,8 +43,8 @@ func main() {
 			dirs = append(dirs, args[i])
 		}
 	}
-	if (batch && audit) || (!audit && (all || len(dirs) > 0)) {
-		fail("--all and node|dir... go with --audit, which excludes --batch\n"+usage, 2)
+	if (batch && audit) || (!audit && (all || reviewSpec != "" || len(dirs) > 0)) {
+		fail("--all, --review, and node|dir... go with --audit, which excludes --batch\n"+usage, 2)
 	}
 	dir, err := repo.Root(root)
 	if err != nil {
@@ -51,6 +55,14 @@ func main() {
 		fail(err.Error(), 1)
 	}
 	if audit {
+		if reviewSpec != "" {
+			out, err := renderReviewAudit(g, all, reviewSpec, dirs)
+			if err != nil {
+				fail(err.Error(), 1)
+			}
+			fmt.Println(out)
+			return
+		}
 		targets, err := codeNodes(g, dirs)
 		if err != nil {
 			fail(err.Error(), 1)
@@ -89,10 +101,11 @@ func render(g *graph.Graph, batchOnly bool) string {
 	var out []string
 	design := g.Design()
 	units := g.Units()
+	reviews := reviewLines(g.Reviews())
 	drift := g.Drift()
 	audit := auditLines(g.Audits())
 	if len(design) == 0 && len(units) == 0 {
-		if len(audit) == 0 && len(drift) == 0 {
+		if len(reviews) == 0 && len(audit) == 0 && len(drift) == 0 {
 			out = append(out, "No pending work.")
 		} else {
 			out = append(out, "Nothing stale, dangling, or unconsumed.")
@@ -109,6 +122,13 @@ func render(g *graph.Graph, batchOnly bool) string {
 		if len(units) > 0 {
 			out = append(out, "# Implement", "")
 			out = append(out, list(units)...)
+			out = append(out, "")
+		}
+		if len(reviews) > 0 {
+			out = append(out, "# Review", "")
+			for _, line := range reviews {
+				out = append(out, "- "+line)
+			}
 			out = append(out, "")
 		}
 	}
@@ -160,6 +180,126 @@ func render(g *graph.Graph, batchOnly bool) string {
 		}
 	}
 	return strings.TrimRight(strings.Join(out, "\n"), "\n")
+}
+
+// reviewLines formats owed applicability reviews with source owner, affected
+// rules, saved checkpoint progress, and next candidate per consumer writer.
+func reviewLines(reviews []graph.ReviewSummary) []string {
+	var out []string
+	for _, r := range reviews {
+		line := fmt.Sprintf("`%s` owes an applicability review (%s)", r.Spec.Rel, r.Owner)
+		if len(r.AffectedRules) > 0 {
+			line += ": " + meta.Quoted(r.AffectedRules)
+		}
+		if !r.HasCheckpoint {
+			line += fmt.Sprintf(" — classify with metadata --review %s --scope ...", r.Spec.Rel)
+			out = append(out, line)
+			continue
+		}
+		line += fmt.Sprintf(" — %d/%d resolved", r.Resolved, r.Total)
+		if r.Blocked > 0 {
+			line += fmt.Sprintf(", %d blocked", r.Blocked)
+		}
+		switch {
+		case r.SourceStale:
+			line += fmt.Sprintf("; source changed — re-classify (%s)", r.Owner)
+		case r.CanClose():
+			line += fmt.Sprintf("; ready to close (%s)", r.Owner)
+		default:
+			if r.NextDesign != "" {
+				line += fmt.Sprintf("; next /sdd-design: `%s`", r.NextDesign)
+			}
+			if r.NextAudit != "" {
+				line += fmt.Sprintf("; next /sdd-audit: `%s`", r.NextAudit)
+			}
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// renderReviewAudit prints audit dossiers for code candidates of a spec's open
+// review checkpoint, skipping candidates whose verdict is already valid and
+// applied unless --all is passed.
+func renderReviewAudit(g *graph.Graph, all bool, specTarget string, dirs []string) (string, error) {
+	rel := repo.Target(g.Root, specTarget)
+	nodes := g.Resolve(rel)
+	if len(nodes) != 1 || nodes[0].Kind == graph.Code {
+		return "", fmt.Errorf("`%s` is no perspective or technical spec node", rel)
+	}
+	spec := nodes[0]
+	sum := g.ReviewState(spec)
+	if !sum.HasCheckpoint {
+		return "", fmt.Errorf("`%s` has no open review checkpoint; classify with metadata --review %s --scope ... first", spec.Rel, spec.Rel)
+	}
+	var allowed map[*graph.Node]bool
+	if len(dirs) > 0 {
+		list, err := codeNodes(g, dirs)
+		if err != nil {
+			return "", err
+		}
+		allowed = map[*graph.Node]bool{}
+		for _, n := range list {
+			allowed[n] = true
+		}
+	}
+	groups := map[string][]graph.ReviewCandidateState{}
+	var groupDirs []string
+	for _, st := range sum.Candidates {
+		if st.Candidate.Kind != "code" || st.Node == nil || st.Removed {
+			continue
+		}
+		if allowed != nil && !allowed[st.Node] {
+			continue
+		}
+		dir := st.Node.UnitDir()
+		if _, ok := groups[dir]; !ok {
+			groupDirs = append(groupDirs, dir)
+		}
+		groups[dir] = append(groups[dir], st)
+	}
+	sort.Strings(groupDirs)
+	var out []string
+	for _, dir := range groupDirs {
+		var lines, dossiers []string
+		for _, st := range groups[dir] {
+			n := st.Node
+			s := g.AuditOf(n)
+			if len(s.Blocked) > 0 {
+				lines = append(lines, standing(s, "not judged"))
+				continue
+			}
+			if !st.Pending() && !all {
+				lines = append(lines, fmt.Sprintf("`%s` review verdict %s applied; skipped (--all re-audits)", n.Rel, st.Candidate.Verdict))
+				continue
+			}
+			dossiers = append(dossiers, dossier(g.Dossier(n))...)
+		}
+		out = append(out, fmt.Sprintf("## `%s/`", dir), "")
+		for _, line := range lines {
+			out = append(out, "- "+line)
+		}
+		if len(lines) > 0 {
+			out = append(out, "")
+		}
+		out = append(out, dossiers...)
+	}
+	if len(out) == 0 {
+		out = append(out, "No review audit owed.")
+	} else {
+		header := fmt.Sprintf("# Review Audit: `%s`", spec.Rel)
+		if len(sum.AffectedRules) > 0 {
+			header += " (" + meta.Quoted(sum.AffectedRules) + ")"
+		}
+		out = append([]string{header, ""}, out...)
+	}
+	if drift := g.Drift(); len(drift) > 0 {
+		out = append(out, "# Drift", "")
+		for _, line := range drift {
+			out = append(out, "- "+line)
+		}
+	}
+	return strings.TrimRight(strings.Join(out, "\n"), "\n"), nil
 }
 
 // auditLines names every code node with no approval at its current content
@@ -264,20 +404,57 @@ func dossier(d graph.Dossier) []string {
 	}
 	out = append(out, "", "Listed technical specs:")
 	var tech []string
-	for _, t := range d.Technical {
-		line := "`" + t.Rel + "`"
-		if len(t.Order) > 0 {
-			line += ": " + meta.Quoted(t.Order)
+	for _, lt := range d.ListedTechnical {
+		line := "`" + lt.Node.Rel + "`"
+		if lt.Selective {
+			line += " (uses: " + meta.Quoted(lt.Selected) + ")"
+			if len(lt.Unselected) > 0 {
+				line += "; unselected: " + meta.Quoted(lt.Unselected)
+			}
+		} else if len(lt.Selected) > 0 {
+			line += ": " + meta.Quoted(lt.Selected)
 		}
 		tech = append(tech, line)
 	}
 	out = append(out, bullets(tech)...)
 	out = append(out, "", "Listed perspective specs:")
 	var persp []string
-	for _, p := range d.Perspectives {
-		persp = append(persp, "`"+p.Rel+"`")
+	for _, lp := range d.ListedPersp {
+		line := "`" + lp.Node.Rel + "`"
+		if lp.Selective {
+			line += " (uses: " + meta.Quoted(lp.Selected) + ")"
+			if len(lp.Unselected) > 0 {
+				line += "; unselected: " + meta.Quoted(lp.Unselected)
+			}
+		}
+		persp = append(persp, line)
 	}
 	out = append(out, bullets(persp)...)
+	if len(d.AnchorHints) > 0 {
+		out = append(out, "", "Rule link hints:")
+		out = append(out, bullets(d.AnchorHints)...)
+	}
+	if len(d.Reviews) > 0 {
+		out = append(out, "", "Review targets:")
+		var revs []string
+		for _, r := range d.Reviews {
+			line := "`" + r.Source + "`"
+			if len(r.Rules) > 0 {
+				line += ": " + meta.Quoted(r.Rules)
+			}
+			if r.Verdict != "" {
+				status := "invalid"
+				if r.Valid && r.Applied {
+					status = "applied"
+				} else if r.Valid {
+					status = "unapplied"
+				}
+				line += fmt.Sprintf(" — verdict %s (%s)", r.Verdict, status)
+			}
+			revs = append(revs, line)
+		}
+		out = append(out, bullets(revs)...)
+	}
 	out = append(out, "", "Candidates:")
 	var cands []string
 	for _, c := range d.Candidates {

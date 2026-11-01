@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"tools/internal/graph"
 )
@@ -80,3 +81,87 @@ func TestResolveNamesNodesMetadataFilesAndDirectories(t *testing.T) {
 		t.Errorf("a write of a directory with no node resolved")
 	}
 }
+
+func TestReviewCLIWorkflow(t *testing.T) {
+	root := t.TempDir()
+	if out, err := exec.Command("git", "init", "-q", root).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	for _, kv := range [][2]string{{"gc.auto", "0"}, {"maintenance.auto", "false"}, {"core.fsmonitor", "false"}} {
+		exec.Command("git", "-C", root, "config", kv[0], kv[1]).Run()
+	}
+	const (
+		P = "specs/business/invite/spec.md"
+		T = "src/specs/toolchain/spec.md"
+		C = "src/backend/invite/invite.ts"
+	)
+	for rel, text := range map[string]string{
+		"AGENTS.md":                "# Root\n",
+		".sdd/.sdd-config.json":    `{"version": 0, "paths": {"specs": "specs", "src": "src", "technical": "src/specs"}}` + "\n",
+		"specs/AGENTS.md":          "# P\n",
+		"src/AGENTS.md":            "# S\n",
+		"specs/business/AGENTS.md": "# B\n",
+		P:                          "# Invite\n\nPurpose.\n\n## R\n\n### Expiry\n\nx\n",
+		T:                          "# Toolchain\n\nPurpose.\n\n## R\n\n### Vitest\n\nx\n\n### Linting\n\ny\n",
+		T + ".metadata.json":       `{"version": 2, "sources": [{"path": "` + P + `"}]}` + "\n",
+		C:                          "export const x = 1;\n",
+		C + ".metadata.json":       `{"version": 2, "sources": [{"path": "` + T + `", "uses": ["Vitest"]}, {"path": "` + P + `"}]}` + "\n",
+	} {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte(text), 0o644)
+	}
+	runMeta := func(args ...string) {
+		t.Helper()
+		opts := parse(args)
+		g, err := graph.Load(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if opts.review != "" {
+			runReview(g, root, opts, parseTime())
+		}
+	}
+	// Settle initial graph.
+	g, err := graph.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{P, T, C} {
+		n := g.Node(rel)
+		var m = n.Meta
+		if rel == P {
+			m, err = graph.Refresh(n, parseTime())
+		} else {
+			m, err = g.Sync(n, parseTime())
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		graph.Save(n, m)
+	}
+	exec.Command("git", "-C", root, "add", "-A").Run()
+	exec.Command("git", "-C", root, "commit", "-q", "-m", "init").Run()
+
+	// Edit unselected rule Linting on T and run review workflow via CLI options.
+	p := filepath.Join(root, filepath.FromSlash(T))
+	os.WriteFile(p, []byte("# Toolchain\n\nPurpose.\n\n## R\n\n### Vitest\n\nx\n\n### Linting\n\nz\n"), 0o644)
+	g, _ = graph.Load(root)
+	m, _ := graph.Refresh(g.Node(T), parseTime())
+	graph.Save(g.Node(T), m)
+
+	runMeta("--review", T, "--scope", "expanded", "src/backend/invite")
+	runMeta("--review", T, "--verdict", "add", "--uses", "Vitest,Linting", C)
+	runMeta("--review", T, "--apply", C)
+	runMeta("--review", T, "--close")
+
+	g, err = graph.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Node(T).OwesReview() {
+		t.Fatal("expected review on T to be closed")
+	}
+}
+
+func parseTime() (t time.Time) { return t }
