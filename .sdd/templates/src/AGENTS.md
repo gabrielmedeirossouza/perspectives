@@ -44,7 +44,7 @@ A global spec may list mechanisms under `## Adopted patterns`, each with the loc
 
 These govern code under `src/`; volume, age, or prior review never excuses a violation.
 
-**C1 Fidelity.** Implement the whole body of every listed product and technical rule, including conditions, exceptions, effects, and forbidden values. Partial implementation is never complete.
+**C1 Fidelity.** Implement the whole body of every applicable product and technical rule, including conditions, exceptions, effects, and forbidden values. `uses` declares the audited selection of applicable rules; omitting an applicable rule from `uses` is a selection defect, never permission to violate it. Partial implementation is never complete.
 
 **C2 Tests after implementation.** Write tests only after every rule in the run has code; only unit suites are required. Test the module's public surface: entry points, exports, and pure helpers. Every rule has a suite; risk determines its scenarios:
 
@@ -56,13 +56,13 @@ These govern code under `src/`; volume, age, or prior review never excuses a vio
 
 When critical versus common is unclear, use critical. Test behavior rather than internal names or call counts; coverage percentage does not replace scenarios. Database mocks are allowed, subject to C7.
 
-**C3 Technical law.** Obey every listed technical spec, including global constraints, and use the glossary's canonical names.
+**C3 Technical law.** Obey every applicable rule of listed technical specs, including global constraints, declare the applicable selection in `uses` (or omit `uses` when all rules apply), and use the glossary's canonical names.
 
 **C4 Broken windows.** Follow the rule in force; report neighboring deviations without copying them.
 
 **C5 One implementation.** If a correct change to A requires the same change to B, give that obligation one implementation accessed through its public API. Extract at the second real consumer; independently variable behavior stays local, and a shared helper with one consumer violates C7.
 
-**C6 Sources.** Maintain each written file's node and sources under the root **Metadata** contract. Add newly served perspectives; remove dangling sources after deleting their exclusive code. If no technical source remains, remove the node and its exclusive content or identify the governing spec. Clean removed rules before new work.
+**C6 Sources.** Maintain each written file's node, sources, and `uses` selections under the root **Metadata** contract. Select all applicable rules (when in doubt, include the rule or keep the source integral, respecting technical support for perspectives); for directory nodes, record the union across linked files. Add newly served perspectives/rules, update `uses` on renames and removals before syncing, and remove dangling sources after deleting their exclusive code. If no technical source remains, remove the node and its exclusive content or identify the governing spec. Clean removed rules before new work.
 
 **C7 Economy.** Use the fewest files and indirections satisfying the specs. Interfaces, ports, layers, mappers, wrappers, and shared helpers require a pain trigger stated in the governing technical spec (**Vocabulary**). Test convenience is insufficient. Technical-type folders within a module require an explicit technical rule.
 
@@ -74,7 +74,7 @@ When critical versus common is unclear, use critical. Test behavior rather than 
 2. Implement under C1–C8, including metadata skeletons; refresh metadata under root **Writers** after writes.
 3. Check diagnostics before the first edit and after every executable edit. Fix introduced blocking errors, distinguishing pre-existing ones. Diagnostics unavailable → stop and report.
 4. After all run code is complete, apply C2 and the testing guidelines below; run the suites green. Runner unavailable → stop and report.
-5. Sync, under root **Writers**, only nodes whose entire source rules are implemented, required tests pass, and validation is complete. Unfinished nodes stay stale, with no other pending marker.
+5. Sync, under root **Writers**, only nodes whose selected source rules (or full catalog when integral) are implemented, required tests pass, and validation is complete. Unfinished nodes stay stale, with no other pending marker.
 
 Permissions: code/tests outside `src/specs/`; code metadata skeletons; Design gaps in `TODO.md`; bug records and testing guidelines below. Technical specs belong to `/sdd-design`. Never edit product specs, the glossary, tool-owned metadata fields, or run `--approve`.
 

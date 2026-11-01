@@ -87,7 +87,7 @@ Three immutable roles and the account life cycle.
 The system **must** support exactly these roles: Owner, Editor, Viewer.
 ```
 
-The `#` names the feature, perspective (global rules), or technical subject; then one purpose sentence and optional bold-led out-of-scope prose, both chrome. Then use only `##` subjects and `###` rules, except the technical **Adopted patterns** defined in `src/AGENTS.md`. A subject groups related rules, not audiences, unrelated topics, or an isolated rule.
+The `#` names the feature, perspective (global rules), or technical subject; then one purpose sentence and optional bold-led out-of-scope prose, both chrome. Then use only `##` subjects and `###` rules, except the technical **Adopted patterns** defined in `src/AGENTS.md`. Every normative obligation and applicability scope lives inside a `###` rule body, never in `##` introductions or chrome. A subject groups related rules, not audiences, unrelated topics, or an isolated rule.
 
 ## Rule format
 
@@ -105,7 +105,7 @@ Name the owner's rule title; add a markdown link when the reader needs to reach 
 
 Lowercase the title; remove characters other than letters, numbers, underscores, spaces, and hyphens; replace each space with a hyphen. Preserve diacritics and consecutive hyphens.
 
-When renaming, moving, or removing a title/file, fix every affected mention and anchor within the writer's scope. Revisit rules citing removed obligations. The other scope's writer receives its broken links through `pending`; **Metadata** in the root `AGENTS.md` defines their effect.
+When renaming, moving, or removing a title/file, fix every affected mention and anchor within the writer's scope. Revisit rules citing removed obligations. The other scope's writer receives its broken links and rule deltas through `pending` and updates its `uses` selections; **Metadata** in the root `AGENTS.md` defines their effect.
 
 ## Postulates
 
@@ -123,6 +123,6 @@ All apply to spec writes and reviews; volume, age, or prior review never excuses
 
 1. Consult the glossary and parked work; classify each item and choose its owner using P2/P5. Justify a new feature against its perspective's boundary.
 2. Validate P1–P7, then write to **Spec file**. Update resolved terms and parked work under their contracts above.
-3. Refresh each written directory under root **Writers**. Remove a deleted feature's directory; report affected technical consumers to `/sdd-design`.
+3. Refresh each written directory under root **Writers**. When a written perspective spec owes an applicability review, classify its diff since `reviewed` with `metadata --review <spec> --scope preserved|expanded|unknown [path...]` (and `--close` when all candidates are resolved), forwarding any pending candidates to `/sdd-design` and `/sdd-audit` without editing consumer metadata. Remove a deleted feature's directory; report affected technical consumers to `/sdd-design`.
 
 Completion requires all steps. Permissions: product specs and their directories; perspective lifecycle under **Perspectives**; glossary definitions; parked work. Metadata is tool-written under the root contract.
